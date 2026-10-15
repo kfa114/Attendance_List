@@ -1,0 +1,11 @@
+node_modules/
+dist/
+gas-dist/
+.local/
+.clasp.json
+.env*
+!.env.example
+*.log
+
+# Local verification screenshots can contain roster data or access links.
+docs/screenshots/
