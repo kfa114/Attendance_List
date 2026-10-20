@@ -275,6 +275,7 @@ test("오전·오후 해제 후 기본 서명·신고 가능, 교육일과 기�
   ok(
     f.call("createExport", { programId: f.p.id, date: "2026-10-15" }, f.admin),
   );
+  assert.equal(f.rt.pdfRows[0].note, "비공개");
   assert.equal(f.rt.pdfRows[0].singleMode, true);
   assert.ok(f.rt.pdfRows[0].single);
   assert.equal(f.rt.pdfRows[0].singleStatus, "서명 완료");

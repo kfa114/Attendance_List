@@ -1,6 +1,7 @@
 export interface PdfRow {
   order: number;
   name: string;
+  note?: string;
   singleMode?: boolean;
   single?: string;
   singleStatus?: string;

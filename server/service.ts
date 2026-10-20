@@ -627,6 +627,7 @@ export class Service {
           return {
             order: p.order,
             name: p.name,
+            note: p.note,
             singleMode: !b.program.signatureEnabled,
             single:
               b.signatures.find(
