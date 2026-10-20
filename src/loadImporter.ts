@@ -10,8 +10,7 @@ export function loadImporter(): Promise<Importer> {
   if (!pending)
     pending = (async () => {
       if (!isGas()) {
-        const source = "/src/features/import.ts";
-        return (await import(/* @vite-ignore */ source)) as Importer;
+        return import("./features/import");
       }
       if (!window.RosterImporter) {
         const source = await request<string>("getImporter");

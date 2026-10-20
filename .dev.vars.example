@@ -1,0 +1,2 @@
+# 로컬 Cloudflare 테스트 전용 예시. 운영 암호는 Cloudflare Secret에 직접 등록하세요.
+ADMIN_PASSPHRASE="local-preview-admin"

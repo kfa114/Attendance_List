@@ -1,3 +1,4 @@
+import type { ExportDownload } from "../domain/export";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   ArrowLeft,
@@ -189,12 +190,15 @@ export function ProgramPage({
   async function download(id: string) {
     setBusy(true);
     try {
-      const f = await request<{ base64: string; name: string }>(
+      const f = await request<ExportDownload>(
         "downloadExport",
         { programId, exportId: id },
         adminToken,
       );
-      const bytes = Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0));
+      const bytes =
+        "format" in f
+          ? await (await import("./pdf")).renderPdf(f.snapshot)
+          : Uint8Array.from(atob(f.base64), (c) => c.charCodeAt(0));
       const url = URL.createObjectURL(
         new Blob([bytes], { type: "application/pdf" }),
       );
@@ -935,8 +939,8 @@ export function ProgramPage({
               </table>
             </div>
             <Notice>
-              이 화면은 출결 상태 미리보기입니다. 실제 서명 이미지는 Apps
-              Script에서 생성하는 PDF에 포함됩니다.
+              이 화면은 출결 상태 미리보기입니다. 저장된 버전을 다운로드하면
+              실제 서명 이미지가 포함된 PDF를 만들어요.
             </Notice>
           </div>
         </Modal>

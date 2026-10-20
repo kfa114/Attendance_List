@@ -21,6 +21,8 @@ declare global {
     };
   }
 }
+export const isLocalPreview = () =>
+  ["localhost", "127.0.0.1"].includes(location.hostname);
 export const isGas = () => Boolean(window.google?.script?.run);
 export async function request<T = any>(
   action: string,

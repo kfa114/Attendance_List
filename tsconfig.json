@@ -11,5 +11,5 @@
     "types": ["node", "google-apps-script"],
     "noEmit": true
   },
-  "include": ["src", "server", "tests"]
+  "include": ["src", "server", "tests", "vite.config.ts"]
 }

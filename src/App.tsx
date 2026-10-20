@@ -27,7 +27,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import type { ProgramSummary, Program, Role } from "./domain/model";
-import { bootstrap, isGas, login, request } from "./api";
+import { bootstrap, isGas, isLocalPreview, login, request } from "./api";
 import { Badge, Empty, Modal, Notice, Spinner } from "./components/ui";
 import { ProgramEditor } from "./features/ProgramEditor";
 import { ProgramPage } from "./features/ProgramPage";
@@ -230,7 +230,7 @@ export default function App() {
             <strong>{path.programId ? "프로그램" : "명단 관리"}</strong>
           </div>
           <div className="topbar-right">
-            {!isGas() && (
+            {isLocalPreview() && (
               <span className="local-indicator">
                 <i />
                 로컬 미리보기
@@ -694,11 +694,10 @@ export default function App() {
               오전 13시 · 오후 18시 마감. 출석률은 마감된 교육일의 본인 서명만
               반영해요.
             </Notice>
-            {!isGas() && (
+            {isLocalPreview() && (
               <p className="small muted">
-                로컬 미리보기는 이 컴퓨터의 .local 파일에 저장돼요. Google
-                저장·기기 간 공유·PDF 생성은 Apps Script 배포 후 사용할 수
-                있어요.
+                로컬 개발 데이터는 운영 데이터와 분리되어 저장돼요. 운영
+                버전에서는 기기들이 같은 Cloudflare 저장소를 사용해요.
               </p>
             )}
           </div>
@@ -784,10 +783,10 @@ function Login({
             <ArrowRight size={17} />
           </button>
         </form>
-        {!isGas() && (
+        {isLocalPreview() && (
           <div className="local-login">
             <strong>로컬 개발 미리보기</strong>
-            <p>실제 Google 데이터에 연결되지 않아요.</p>
+            <p>운영 데이터와 분리된 개발 환경이에요.</p>
             <button
               className="btn soft full"
               disabled={busy}

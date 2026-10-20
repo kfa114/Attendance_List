@@ -1,3 +1,4 @@
+import type { ExportDownload } from "../src/domain/export";
 import type { Session, Table } from "../src/domain/model";
 export interface Repository {
   list<T>(table: Table, programId?: string): T[];
@@ -33,7 +34,8 @@ export interface Runtime {
       pmStatus: string;
     }[],
   ): { fileId: string };
-  pdf(fileId: string): { base64: string; name: string };
+  pdf(fileId: string): ExportDownload;
   importer(): string;
   appUrl(): string;
+  platform?(): "cloudflare" | "gas" | "local";
 }

@@ -185,7 +185,7 @@ export class Service {
             .length,
         })),
         serverNow: this.rt.now().toISOString(),
-        mode: this.rt.appUrl() ? "gas" : "local",
+        mode: this.rt.platform?.() || (this.rt.appUrl() ? "gas" : "local"),
       };
     }
     if (req.action === "createProgram") {

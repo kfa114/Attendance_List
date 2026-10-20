@@ -1,161 +1,111 @@
 # 출석 — 프로그램 명단 관리
 
-React·TypeScript 화면과 Google Apps Script 서버, Google 스프레드시트·Drive로 구성한 첫 개발 버전입니다. 별도 유료 DB·호스팅을 사용하지 않습니다.
+여러 교육 프로그램의 명단·서명·출결을 관리하는 반응형 웹앱입니다. **Cloudflare Workers + Static Assets + SQLite 기반 Durable Object**로 실행합니다. Google 계정·Apps Script·Sheets·Drive 연결이 필요하지 않습니다.
 
-**현재 상태:** 로컬에서 명단 생성·파일 가져오기·서명·강사 판단을 검증했습니다. Apps Script 배포용 파일을 생성했으며, 실제 Google 계정 연결·배포·Sheets/Drive 저장·PDF 생성은 아직 검증하지 않았습니다.
+현재 Cloudflare 실행 환경의 로컬 검증을 완료했습니다. 실제 계정 배포와 운영 기기 검증은 별도 단계입니다.
 
-## 빠르게 실행하기
+## 구성
+
+| 영역 | 구현 |
+|---|---|
+| 화면 | React 19, TypeScript, Vite, 파란색 포인트 반응형 UI |
+| 서버 | Cloudflare Worker의 `/api`, 기존 공통 업무 서비스 재사용 |
+| 저장 | Durable Object SQLite: 프로그램·명단·출결·서명 PNG·출력 스냅샷·세션 |
+| 파일 가져오기 | XLSX / XLS / CSV / ODS, 필요할 때만 파서 다운로드 |
+| PDF | 저장된 출력 스냅샷을 브라우저에서 jsPDF + 나눔고딕으로 생성 |
+| 배포 | GitHub `kfa114/Attendance_List` → Cloudflare Workers Builds |
+
+R2·D1·KV·외부 유료 DB를 별도로 연결하지 않습니다. SQLite 기반 Durable Objects는 Workers Free에서 지원되지만 무료 사용량·저장량 제한을 받습니다. 무료 무제한 서비스를 의미하지 않습니다.
+
+- [Workers 무료 요금·제한](https://developers.cloudflare.com/workers/platform/pricing/)
+- [Durable Objects 무료 요금·제한](https://developers.cloudflare.com/durable-objects/platform/pricing/)
+- [SQLite 저장소 제한](https://developers.cloudflare.com/durable-objects/platform/limits/)
+
+## 로컬 실행
+
+Node.js 22 이상과 npm을 사용합니다.
 
 ```sh
 npm ci
-npm run dev
+cp .dev.vars.example .dev.vars
+npm run dev:cloudflare
 ```
 
-브라우저에서 터미널에 표시된 주소(기본 http://127.0.0.1:5173)를 열고 **미리보기 시작**을 누릅니다.
+Wrangler가 표시한 주소(기본 `http://localhost:8787`)로 접속합니다. 예제의 개발용 암호는 `local-preview-admin`이며 운영 암호로 사용하지 않습니다. 로컬에서만 ‘미리보기 시작’ 버튼을 표시합니다.
 
-- 로컬 데이터: `.local/data.json`, 서명 이미지: `.local/files/`.
-- 로컬 미리보기 암호: `local-preview-admin`. 실제 배포에서는 이 암호를 사용하지 않습니다.
-- `LOCAL_ADMIN_SECRET` 환경 변수로 로컬 암호를 변경할 수 있습니다.
-- 재접속 후 명단·서명은 유지됩니다. 개발 서버 재시작 시 로그인 세션은 초기화됩니다.
-- 로컬 서버는 127.0.0.1로 제한되며 다른 기기에서는 접속할 수 없습니다.
-- 실제 운영 명단 대신 가상 데이터로 확인하세요. `.local/`은 소스 관리에서 제외됩니다.
+- Cloudflare 로컬 데이터: `.wrangler/state/`의 SQLite. 재시작 후에도 유지됩니다.
+- `.dev.vars`는 Git에서 제외됩니다. 운영 암호를 이 파일이나 저장소에 올리지 않습니다.
+- 기존 Node 개발 미리보기는 `npm run dev`로 실행할 수 있습니다. 이 방식은 `.local/`에 저장하며 Cloudflare 로컬 저장소와 다릅니다. Cloudflare 통합 확인에는 `dev:cloudflare`를 사용합니다.
+- 운영 데이터·이전 Google 데이터·기존 `.local` 데이터가 자동 복사되지 않습니다.
 
-## 구현한 화면·처리
+## Cloudflare 배포
 
-- 첫 페이지: 명단 생성·목록·검색·상태 필터·정렬·카드/목록 보기. 각 프로그램에서 보관·운영 재개·삭제 가능.
-- 삭제는 휴지통 이동이며 명단·서명·출결·출력 파일을 보존합니다. 전체 목록과 통계에서는 제외하고, 휴지통 필터에서 복원할 수 있습니다. 휴지통 상태에서는 전용 링크와 관리자 상세 조회·출력도 차단합니다. 영구 삭제는 제공하지 않습니다.
-- 생성: 프로그램명, 오전·오후 서명 사용 여부, 교육일, 순번·이름·연락처·비고.
-- 파일: XLSX/XLS/CSV/ODS, 시트 선택, 제목 행·열 연결, 미리보기, 셀 수정 후 저장.
-- 파일 상단(열 이름 행 위)의 명단 제목을 프로그램명으로 자동 입력합니다. 제목 없이 다음 단계로 진행해 파일을 가져올 수 있고, 가져온 제목은 저장 전에 수정할 수 있습니다. 제목을 찾지 못하면 직접 입력합니다.
-- 파일 기준: 5MB 이하, 시트당 2,000행·100열 이하, 명단 최대 500명. 압축 파일은 실제 파싱 후에도 한도를 확인합니다.
-- 프로그램별 교육생 / 태블릿 / 강사·관리자 탭.
-- 교육생: 뒤 4자리 조회, 중복 시 이름 확인, 본인 내역, 선택한 서명 방식에 맞는 결석 신고·취소.
-- 태블릿: 통합 미서명 목록, 이름 검색, 자필 서명, 중복 방지, 서명 완료자 숨김.
-- 관리자: 명단·설정 편집, 서명 방식 전환, 미서명 출석·결석 판단, 연락 담당·결과, 작업 이력, 프로그램 보관.
-- 운영 규칙: 한국 시간 오전 13시·오후 18시 마감. 강사 판단은 서명 기준 출석률에 미반영.
-- 오전·오후 스위치는 서명 구분만 변경합니다. 끄면 교육일별 기본 서명 1회(18시 마감), 켜면 오전·오후 각 1회입니다. 교육일·역할 탭·출결·신고·출력은 두 방식 모두 유지됩니다.
-- 저장 호환성을 위해 `signatureEnabled`는 오전·오후 구분 여부를 뜻합니다. 기본 서명은 `period: single`로 저장하며 공통 `programPeriods` 함수로 화면·집계를 처리합니다. 기존 기록은 변환·삭제하지 않으며 현재 선택한 방식의 서명만 화면·집계에 사용합니다.
-- 이름·연락처·비고 수정 시 참여자 ID와 기존 기록 유지.
-- 운영 기록이 있는 명단에는 참여자 추가를 제한하고 참여 제외·재개방 기능은 제공하지 않음.
+### GitHub 연결 — 권장
 
-PDF는 Apps Script의 DocumentApp·Drive를 사용해 서명 이미지가 포함된 버전 파일을 생성하는 코드를 작성했습니다. 로컬에서는 상태 미리보기만 제공하며 실제 PDF 생성은 배포 후 시험해야 합니다.
+1. Cloudflare에서 **Workers & Pages → Create application → Git 저장소 연결**을 엽니다.
+2. GitHub의 `kfa114/Attendance_List`만 선택해 연결합니다.
+3. **Worker 이름:** `attendance-list` (`wrangler.jsonc`의 이름과 일치).
+4. **운영 브랜치:** `main`, **루트:** 저장소 루트.
+5. **빌드 명령:** `npm run build`, **배포 명령:** `npx wrangler deploy`.
+6. Worker의 **Settings → Variables and Secrets**에서 `ADMIN_PASSPHRASE`를 **Secret**으로 추가합니다. 새 관리자 암호를 16자 이상으로 직접 설정합니다. GitHub·빌드 출력·일반 환경 변수에 암호를 넣지 않습니다.
+7. 필요 시 새 버전을 배포한 뒤 제공된 `https://attendance-list.<계정>.workers.dev` 주소를 엽니다.
+8. 관리자 로그인 → 가상 명단 생성 → 다른 기기의 태블릿 전용 링크 → 서명 저장 → PDF 다운로드를 확인한 뒤 운영합니다.
 
-## Apps Script 배포
+처음 배포할 때 `AttendanceWorkspace` SQLite Durable Object가 설정에 따라 만들어집니다. DB ID나 버킷을 수동으로 발급할 필요는 없습니다. 기존 Cloudflare 프로젝트는 변경하지 않으며 별도 Worker로 관리합니다. `ADMIN_PASSPHRASE`가 없거나 16자 미만이면 로그인 API가 운영자 설정 안내를 반환합니다.
+
+Git 연동 후에는 `main` 변경을 푸시하면 자동 빌드·배포할 수 있습니다. 기존 데이터 유지를 위해 `AttendanceWorkspace` 클래스 이름, namespace binding 및 `attendance-workspace-v1` 객체 이름을 임의로 바꾸지 않습니다.
+
+### CLI 배포
 
 ```sh
-npm run build
+npx wrangler login
+npm run deploy:check
+npx wrangler secret put ADMIN_PASSPHRASE
+npm run deploy
 ```
 
-`gas-dist/`에 다음 파일이 만들어집니다.
+Cloudflare 로그인·계정 선택·권한 승인은 운영자가 진행합니다. `wrangler secret put`이 처음 프로젝트를 만들도록 요구하면 Worker를 먼저 생성·배포하고 Secret을 등록합니다. 암호가 없는 동안 API는 사용되지 않습니다.
 
-| 파일 | 역할 |
-|---|---|
-| Code.js | 서버·업무 규칙·Sheets/Drive 어댑터 |
-| Index.html | React 화면과 필요한 CSS·JS 포함 |
-| Importer.html | 파일 가져오기를 열 때만 읽는 엑셀 파서 |
-| appsscript.json | 한국 시간대·V8·Google 서비스 권한 |
+## 기능과 운영 규칙
 
-1. 운영에 사용할 Google 계정으로 [Apps Script](https://script.google.com/)에서 새 프로젝트를 만듭니다.
-2. `Code.js` 내용을 편집기의 `Code.gs`에 붙여넣습니다.
-3. HTML 파일 `Index`를 만들고 `Index.html` 내용을 붙여넣습니다.
-4. HTML 파일 `Importer`를 만들고 `Importer.html` 내용을 그대로 붙여넣습니다. 이어서 프로젝트 설정에서 매니페스트 표시를 켜고 `appsscript.json` 내용을 반영합니다.
-5. 스크립트 속성에 `ADMIN_PASSPHRASE`를 추가하고 **16자 이상 충분히 긴 임의의 관리자 암호**를 입력합니다.
-6. 편집기에서 `setup`을 실행합니다. Google이 요구하는 권한은 해당 계정 사용자가 확인·승인합니다.
-7. 설정이 성공하면 `SPREADSHEET_ID`, `DRIVE_FOLDER_ID`, `ADMIN_SECRET_HASH`가 저장되고 암호 평문 속성은 삭제됩니다. 시트·폴더는 한 번만 생성됩니다.
-8. `배포 → 새 배포 → 웹 앱`으로 진행합니다. 서버가 전용 운영 저장소에 접근하도록 실행 주체를 운영 계정으로 설정합니다. 접속 범위는 실제 운영 대상과 계정에서 제공하는 옵션에 맞게 선택합니다.
-9. 배포 URL로 접속해 설정한 암호로 로그인합니다.
-10. **가상 명단으로** 아래 Google 통합 검증을 완료한 후 실제 데이터를 입력합니다.
+- 첫 페이지: 명단 생성, 검색·정렬, 카드/목록 보기, 보관·운영 재개·삭제·휴지통 복원.
+- 프로그램별 교육생 / 태블릿 / 강사·관리자 탭.
+- 순번·이름·연락처·비고의 4개 열. 제목은 직접 입력하거나 파일 상단에서 자동 인식하고 수정합니다.
+- 파일 기준: 5MB, 시트당 2,000행·100열, 프로그램당 참여자 500명, 교육일 150일.
+- 오전·오후 구분 사용 시 각각 서명. 끄면 교육일마다 기본 서명 1회. 교육일 설정과 모든 역할 기능 유지.
+- 한국 시간 기준 오전 13:00 / 오후·기본 서명 18:00 마감. 미서명은 강사가 출석·결석 판단합니다.
+- 출석률은 마감된 현재 서명 방식의 본인 서명만 집계합니다. 강사 판단은 미반영. 방식 변경은 기존 기록을 변환·삭제하지 않습니다.
+- 교육생은 연락처 뒤 4자리로 본인 조회, 중복 시 이름 확인. 교육생·태블릿에 연락처와 비고를 공개하지 않습니다.
+- 태블릿은 미서명자 이름 선택·자필 서명·완료자 숨김. 관리자에게 연락 기록·출결 판단·이력 제공.
+- 삭제는 휴지통 이동으로 기록을 보존합니다. 휴지통에서는 기존 링크와 상세·출력 접근을 차단하며 복원할 수 있습니다.
+- 서명 PNG는 비공개 SQLite에 저장됩니다. 버전 생성 시 제목·이름·서명 파일 참조·출결 상태를 고정하고 다운로드할 때 한글·서명 이미지가 포함된 PDF를 브라우저에서 만듭니다.
 
-`setup`은 재실행 시 새 시트를 무조건 만들지 않으며, 암호를 변경하려면 `ADMIN_PASSPHRASE`를 다시 설정한 후 실행합니다. 데이터·파일을 공개 공유하지 마세요. 웹앱에서 서버 함수가 필요한 범위만 반환합니다.
+## 유지보수와 보안
 
-이 버전은 Google 로그인 기반 개별 강사 계정 대신 **서버에서 검증하는 관리자 암호와 임시 세션**을 사용합니다. 관리자 작업 주체는 ‘관리자’로 기록됩니다. 개별 강사별 계정·권한 위임은 아직 구현하지 않았습니다.
-
-Google 서비스 권한은 Sheets·Drive·Docs 접근을 포함합니다. DriveApp·DocumentApp의 특성상 넓은 계정 권한이 필요하므로 운영용 계정에서 프로젝트·폴더를 분리해 사용하는 편이 좋습니다. 코드에 Google 로그인 정보나 OAuth 토큰을 넣지 않습니다.
-
-## 현장 링크·로그인
-
-- 관리자 홈에서 프로그램을 선택한 뒤 **전용 링크**를 엽니다.
-- 교육생 링크: 해당 프로그램 본인 조회만 제공.
-- 태블릿 링크: 해당 프로그램의 이름·서명 기능만 제공. 최대 6시간 유효.
-- 관리자 세션: 최대 4시간. 5회 실패 시 15분 동안 로그인 시도 제한.
-- 교육생도 조회 성공 시 제한된 본인 세션을 발급합니다. 이름·뒤 4자리까지 중복되면 자동으로 다른 사람의 내역을 열지 않습니다.
-- Apps Script CacheService는 만료 전에도 데이터를 제거할 수 있어 세션이 일찍 종료될 수 있습니다. 이때 다시 로그인하거나 현장 링크를 재발급합니다.
-- 태블릿 링크에는 임시 접근 토큰이 포함되므로 현장 기기 외에는 공유하지 않습니다.
-
-## 데이터 저장 구조
-
-한 스프레드시트에 `programs`, `participants`, `signatures`, `absences`, `decisions`, `contacts`, `audits`, `exports` 탭을 둡니다. 각 행은 `id / programId / payload(JSON)`이며, JSON 문자열로 저장하여 이름·비고가 시트 수식으로 실행되지 않게 합니다.
-
-명단 화면의 4개 열과 내부 저장 구조는 다릅니다. 내부 시트는 앱 전용이므로 직접 행·열을 바꾸지 않고 웹앱에서 편집합니다. 각 payload는 45,000자 이내로 제한합니다. 명단은 일괄 쓰기로 저장하고 수정 작업은 ScriptLock으로 직렬화합니다.
-
-서명 PNG·PDF는 비공개 Drive 폴더에 저장합니다. 시트에는 파일 ID만 기록합니다. 이미지 저장 후 마감 또는 시트 쓰기 실패가 발생하면 해당 임시 이미지를 휴지통으로 이동합니다. Google Sheets와 Drive는 하나의 DB 트랜잭션이 아니므로 네트워크 실패 후 저장 내역을 재확인해야 합니다.
-
-## 유지보수 구조
-
-```text
-src/
-  App.tsx                     관리자 홈·라우팅·로그인
-  api.ts                      로컬/Apps Script 통신
-  styles.css                  파란색 테마·반응형 공통 스타일
-  components/                 공통 UI·서명 캔버스
-  domain/model.ts             공통 데이터 타입
-  domain/rules.ts             마감·출석률·명단 검증
-  features/ProgramEditor.tsx   파일/수동 명단 작성·설정
-  features/import.ts          파일 형식·시트·열 변환
-  features/ProgramPage.tsx     프로그램 역할 탭·관리자·태블릿
-  features/Student.tsx         본인 조회·결석 신고
-server/
-  service.ts                  모든 API의 권한·업무 처리
-  ports.ts                    저장·환경 인터페이스
-  gas.ts                      Sheets·Drive·Cache·Lock 구현
-  local.ts                    로컬 JSON·이미지 저장 어댑터
-scripts/
-  dev.mjs                     로컬 API·Vite 실행
-  build.mjs                   Apps Script 배포 파일 생성
-```
-
-추가 스타일 프레임워크 없이 CSS 변수와 재사용 컴포넌트로 초기 화면을 구성했습니다. 로컬과 Apps Script는 **같은 Service와 업무 규칙**을 사용합니다. Apps Script에는 npm 모듈을 직접 설치하지 않고 빌드 결과만 올립니다.
-
-서버 소스를 변경하면 `npm run dev`를 다시 시작해야 합니다. 화면 소스 변경은 개발 중 자동 반영됩니다. 엑셀 파서는 파일 가져오기에서 실제로 파일을 선택할 때만 불러옵니다. 원본을 수정한 뒤 빌드하며 `gas-dist/`를 직접 수정하지 않습니다.
+- `src/domain/`: 데이터·업무 규칙. `server/service.ts`: 공통 인증·명단·출결 처리.
+- `server/cloudflare/`: HTTP 검증, SQLite 어댑터, 영구 세션·조회 제한. 저장소 변경은 이 계층에서 처리합니다.
+- 동일 Durable Object에서 동기 트랜잭션으로 명단 수정·중복 서명·서명 이미지 쓰기를 보호합니다.
+- SQL 파라미터 바인딩을 사용하고 명단·파일을 공개 URL로 제공하지 않습니다. `/api`는 같은 출처의 JSON 요청만 받습니다.
+- 관리자 4시간, 교육생 4시간, 태블릿 6시간 세션. 틀린 조회 5회 후 발신자별 15분 제한. 관리자 암호를 변경해도 이미 발급한 세션은 만료까지 유지되므로 노출 사고 시 세션 테이블도 폐기해야 합니다.
+- 현재는 개별 강사 계정 대신 공동 관리자 암호를 사용합니다. 권한 위임·자동 백업·오프라인 저장 기능은 없습니다.
+- 소규모 운영용 단일 SQLite 저장소입니다. 무료 저장 한도와 요청량을 Cloudflare 대시보드에서 확인하세요. 조회 시 프로그램별 레코드를 읽으며 대규모 통계용 구조가 아닙니다.
+- 한 번의 PDF 다운로드 데이터는 12MB까지입니다. 원본 서명 이미지는 장당 750KB 이하입니다. 실제 서명 크기와 동시 접속 기기로 현장 검증이 필요합니다.
 
 ## 검증
 
 ```sh
 npm test
+npm run test:cloudflare
 npm run build
+npx wrangler deploy --dry-run
 ```
 
-자동 테스트는 마감 경계, 강사 판단의 출석률 미반영, 비활성 기간 집계, 본인·태블릿 정보 최소화, 프로그램 범위, 편집 충돌, 중복 서명·재시도, 저장 중 마감 복구, XLSX/XLS/CSV/ODS 파싱을 다룹니다.
+실제 로컬 Workers 통합 검사는 `dev:cloudflare`가 켜진 상태에서 실행합니다.
 
-브라우저에서는 수동 생성, 다중 시트 엑셀 가져오기, 프로그램 선택, 강사 판단, 교육생 본인 조회, 실제 캔버스 필기·저장·카드 숨김, 모바일 명단 편집을 가상 데이터로 확인했습니다. 자세한 범위는 [개발 검증 기록](docs/검증기록.md)과 [파일 가져오기 집중 검증](docs/파일가져오기_검증.md)에 있습니다.
+```sh
+node scripts/test-cloudflare.mjs
+```
 
-## 배포 후 필수 Google 통합 시험
+이 스크립트는 localhost만 허용하고 가상 명단을 만든 뒤 휴지통으로 옮깁니다. SQLite 어댑터 검사는 Node 22의 `--experimental-sqlite`를 사용합니다.
 
-- setup 재실행 시 저장소 중복 생성 여부.
-- 관리자 암호 실패·성공, 역할 탭만 눌러 권한을 얻을 수 없는지.
-- 두 기기에서 같은 프로그램 조회·서명 반영.
-- 마감 시각·서명 비활성화 이후 서버 저장 차단.
-- Drive PNG·시트 기록 일치, 반복 저장·실패 재시도.
-- PDF의 한글·페이지 나눔·서명 이미지·버전 파일·다운로드.
-- 익명 교육생·태블릿 배포 접속 옵션과 세션 만료.
-- 예상 운영 인원에서 읽기·쓰기 시간과 Apps Script 한도.
-
-## 알려진 범위와 운영 주의점
-
-- Google 계정 연결·실제 배포·OAuth 승인은 아직 진행하지 않았습니다.
-- 로컬 저장은 한 컴퓨터용 개발 기능이며 클라우드 동기화가 아닙니다.
-- 오프라인 서명 대기열은 없습니다. 서버 저장 성공 후에만 완료 처리합니다.
-- 프로그램 화면은 활성 상태에서 20초마다 갱신하고 포커스 복귀 때 다시 읽습니다. 웹소켓 기반 즉시 동기화는 아닙니다.
-- 현재 저장 어댑터는 필요한 탭의 데이터를 읽어 프로그램별로 필터링합니다. 대규모 누적 이력은 시트 분할·조회 인덱스 등 개선이 필요합니다.
-- 이력은 관리자 화면에서 최근 100건까지 표시합니다. 원본 기록은 시트에 유지됩니다.
-- 문서의 ‘순서 변경’ 전용 UI와 파일 여러 행 붙여넣기는 아직 제공하지 않습니다.
-- 개인별 강사 로그인, 자동 백업·복구 UI, 고부하 동시 접속은 이번 버전의 완료 범위가 아닙니다.
-- 실제 iOS/Android의 가상 키보드·손글씨·네트워크 단절은 실기기에서 추가 검증해야 합니다.
-- Apps Script 무료 한도·Drive 저장공간 안에서 운영합니다. 무료·무제한 성능을 보장하지 않습니다.
-
-## 참고
-
-- [Apps Script 웹앱](https://developers.google.com/apps-script/guides/web)
-- [HTML Service 통신](https://developers.google.com/apps-script/guides/html/communication)
-- [서비스 한도](https://developers.google.com/apps-script/guides/services/quotas)
-- [공식 SheetJS 설치 경로](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/)
+이전 Apps Script 어댑터와 `build:gas`는 과거 버전 참고용으로 보존되어 있으나 기본 빌드·Cloudflare 운영에는 포함하지 않습니다. 앞으로의 운영 기준은 이 README와 `docs/Cloudflare_이전_검증.md`입니다.

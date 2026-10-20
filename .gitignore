@@ -9,3 +9,8 @@ gas-dist/
 
 # Local verification screenshots can contain roster data or access links.
 docs/screenshots/
+
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
