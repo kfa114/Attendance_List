@@ -18,6 +18,7 @@
   "dependencies": {
     "jspdf": "^4.2.1",
     "lucide-react": "^0.468.0",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "signature_pad": "^5.0.0",
@@ -27,6 +28,7 @@
     "@cloudflare/workers-types": "^5.20261019.1",
     "@types/google-apps-script": "^1.0.0",
     "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "esbuild": "^0.25.0",

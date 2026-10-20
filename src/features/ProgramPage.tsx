@@ -36,6 +36,7 @@ import {
 } from "../domain/rules";
 import { getBundle, request } from "../api";
 import { Badge, Empty, Modal, Notice, Spinner } from "../components/ui";
+import { SigningQr } from "../components/SigningQr";
 import { SignatureDialog } from "../components/SignatureDialog";
 import { ProgramEditor } from "./ProgramEditor";
 import { Student } from "./Student";
@@ -345,8 +346,10 @@ export function ProgramPage({
         <section className="tablet-panel">
           <div className="section-line">
             <div>
-              <h2>이름을 선택하고 서명해주세요</h2>
-              <p className="muted">서명한 이름은 목록에서 사라져요.</p>
+              <h2>휴대폰 또는 태블릿으로 서명해주세요</h2>
+              <p className="muted">
+                QR로 각자 서명하거나, 아래에서 이름을 선택해주세요.
+              </p>
             </div>
             <Badge>
               {slotSignatures.length} / {bundle.participants.length}명 완료
@@ -360,6 +363,14 @@ export function ProgramPage({
           ) : (
             <>
               {slotControls}
+              <SigningQr
+                programId={programId}
+                date={date}
+                period={period}
+                token={token}
+                enabled={Boolean(canWrite)}
+              />
+              <h3>태블릿에서 직접 서명하기</h3>
               {!canWrite && (
                 <Notice>
                   {date !== koreaDate(now)

@@ -117,7 +117,13 @@ test("중복 번호 이름 단계, 이름까지 중복이면 차단", () => {
   const f = fixture();
   assert.deepEqual(
     ok(f.call("studentLogin", { programId: f.p.id, last4: "1001" })),
-    { needsName: true },
+    {
+      needsName: true,
+      candidates: f.db
+        .list<any>("participants", f.p.id)
+        .slice(0, 2)
+        .map(({ id, name, order }) => ({ id, name, order })),
+    },
   );
   assert.equal(
     ok(
@@ -494,4 +500,175 @@ test("보관·휴지통·복원은 관련 기록 보존, 삭제 후 기존 링�
   assert.deepEqual(restored.signatures, original.signatures);
   assert.deepEqual(restored.program.dates, original.program.dates);
   assert.equal(f.rt.files.length, 1);
+});
+
+test("중복 뒷자리 후보는 이름·순번만 제공하고 선택은 해당 번호 안에서 검증", () => {
+  const f = fixture();
+  const result = ok(
+    f.call("studentLogin", { programId: f.p.id, last4: "1001" }),
+  );
+  assert.equal(result.candidates.length, 2);
+  assert.deepEqual(Object.keys(result.candidates[0]).sort(), [
+    "id",
+    "name",
+    "order",
+  ]);
+  const selected = result.candidates[1];
+  const s = ok(
+    f.call("studentLogin", {
+      programId: f.p.id,
+      last4: "1001",
+      participantId: selected.id,
+    }),
+  );
+  assert.equal(s.participantId, selected.id);
+  const outsider = f.db.list<any>("participants", f.p.id)[2];
+  assert.equal(
+    f.call("studentLogin", {
+      programId: f.p.id,
+      last4: "1001",
+      participantId: outsider.id,
+    }).code,
+    "LOGIN",
+  );
+  const rows = f.db.list<any>("participants", f.p.id);
+  rows[1].name = rows[0].name;
+  assert.equal(
+    ok(
+      f.call("studentLogin", {
+        programId: f.p.id,
+        last4: "1001",
+        participantId: rows[1].id,
+      }),
+    ).participantId,
+    rows[1].id,
+  );
+});
+
+test("휴대폰 QR은 선택한 프로그램·교육일·시간의 이름 목록과 서명만 허용", () => {
+  const f = fixture();
+  const tablet = ok(f.call("tabletSession", { programId: f.p.id }, f.admin));
+  const slot = { programId: f.p.id, date: "2026-10-15", period: "am" };
+  const qr = ok(f.call("signingSession", slot, tablet.token));
+  assert.match(qr.url, /role=signing&token=/);
+  assert.notEqual(qr.token, tablet.token);
+  const roster = ok(f.call("signingRoster", { programId: f.p.id }, qr.token));
+  assert.equal(roster.open, true);
+  assert.deepEqual(Object.keys(roster.participants[0]).sort(), [
+    "id",
+    "name",
+    "order",
+    "signed",
+  ]);
+  assert.equal(
+    f.call("getBundle", { programId: f.p.id }, qr.token).code,
+    "FORBIDDEN",
+  );
+  assert.equal(f.call("bootstrap", {}, qr.token).code, "AUTH");
+  assert.equal(
+    f.call("tabletSession", { programId: f.p.id }, qr.token).code,
+    "AUTH",
+  );
+  assert.equal(f.call("signingSession", slot, qr.token).code, "FORBIDDEN");
+  const student = ok(
+    f.call("studentLogin", { programId: f.p.id, last4: "2001" }),
+  );
+  assert.equal(f.call("signingSession", slot, student.token).code, "FORBIDDEN");
+  const sign = {
+    ...slot,
+    participantId: roster.participants[0].id,
+    image,
+    requestId: "mobile-once",
+  };
+  assert.equal(
+    f.call("sign", { ...sign, period: "pm" }, qr.token).code,
+    "FORBIDDEN",
+  );
+  assert.equal(
+    f.call("sign", { ...sign, date: "2026-10-16" }, qr.token).code,
+    "FORBIDDEN",
+  );
+  const other = f.create("별도 프로그램");
+  assert.equal(
+    f.call("signingRoster", { programId: other.id }, qr.token).code,
+    "FORBIDDEN",
+  );
+  assert.equal(
+    f.call("sign", { ...sign, programId: other.id }, qr.token).code,
+    "FORBIDDEN",
+  );
+  assert.equal(f.call("sign", sign, qr.token).ok, true);
+  assert.equal(f.call("sign", sign, qr.token).ok, true);
+  assert.equal(
+    f.call("sign", { ...sign, requestId: "another-device" }, qr.token).code,
+    "DUPLICATE",
+  );
+  assert.equal(
+    ok(f.call("signingRoster", { programId: f.p.id }, qr.token)).participants[0]
+      .signed,
+    true,
+  );
+  f.rt.at = "2026-10-15T04:00:00Z";
+  assert.equal(
+    ok(f.call("signingRoster", { programId: f.p.id }, qr.token)).open,
+    false,
+  );
+  assert.equal(
+    f.call(
+      "sign",
+      { ...sign, participantId: roster.participants[1].id },
+      qr.token,
+    ).code,
+    "CLOSED",
+  );
+  assert.equal(f.call("signingSession", slot, tablet.token).code, "CLOSED");
+});
+
+test("단일 서명 QR, 만료, 보관·휴지통 및 서명 방식 변경 차단", () => {
+  const f = fixture();
+  const p = f.create("단일", false);
+  const slot = { programId: p.id, date: "2026-10-15", period: "single" };
+  const qr = ok(f.call("signingSession", slot, f.admin));
+  const roster = ok(f.call("signingRoster", { programId: p.id }, qr.token));
+  assert.equal(roster.period, "single");
+  assert.equal(
+    f.call(
+      "sign",
+      {
+        ...slot,
+        participantId: roster.participants[0].id,
+        image,
+        requestId: "single-mobile",
+      },
+      qr.token,
+    ).ok,
+    true,
+  );
+  assert.equal(
+    f.call("signingSession", { ...slot, period: "am" }, f.admin).ok,
+    false,
+  );
+  const record = f.db.list<any>("programs").find((r) => r.id === p.id);
+  record.signatureEnabled = true;
+  assert.equal(
+    f.call("signingRoster", { programId: p.id }, qr.token).ok,
+    false,
+  );
+  record.signatureEnabled = false;
+  record.status = "archived";
+  assert.equal(
+    f.call("signingRoster", { programId: p.id }, qr.token).ok,
+    false,
+  );
+  record.status = "deleted";
+  assert.equal(
+    f.call("signingRoster", { programId: p.id }, qr.token).code,
+    "NOT_FOUND",
+  );
+  record.status = "active";
+  f.rt.at = new Date(qr.expiresAt).toISOString();
+  assert.equal(
+    f.call("signingRoster", { programId: p.id }, qr.token).code,
+    "AUTH",
+  );
 });

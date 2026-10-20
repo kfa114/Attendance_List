@@ -11,9 +11,10 @@ import {
   Check,
   LoaderCircle,
 } from "lucide-react";
+import { EducationCalendar } from "../components/EducationCalendar";
 import { Modal, Notice } from "../components/ui";
 import type { Bundle, DraftRow, Program } from "../domain/model";
-import { rowError, koreaDate, LIMITS } from "../domain/rules";
+import { rowError, LIMITS } from "../domain/rules";
 import { request } from "../api";
 import type { ImportedFile } from "./import";
 import { loadImporter } from "../loadImporter";
@@ -34,7 +35,6 @@ export function ProgramEditor({
     existing?.program.signatureEnabled ?? true,
   );
   const [dates, setDates] = useState(existing?.program.dates || []);
-  const [newDate, setNewDate] = useState(koreaDate());
   const [rows, setRows] = useState<DraftRow[]>(
     existing?.participants.map((r) => ({
       name: r.name,
@@ -240,24 +240,12 @@ export function ProgramEditor({
               <label className="field">
                 교육일 <span className="optional">나중에 추가할 수 있어요</span>
               </label>
-              <div className="inline">
-                <input
-                  aria-label="추가할 교육일"
-                  type="date"
-                  value={newDate}
-                  onChange={(e) => setNewDate(e.target.value)}
-                />
-                <button
-                  className="btn secondary"
-                  onClick={() => {
-                    if (newDate)
-                      setDates([...new Set([...dates, newDate])].sort());
-                  }}
-                >
-                  <Plus size={16} />
-                  추가
-                </button>
-              </div>
+              <EducationCalendar
+                dates={dates}
+                onAdd={(day) =>
+                  setDates((current) => [...new Set([...current, day])].sort())
+                }
+              />
               <div className="date-chips">
                 {dates.map((d) => (
                   <button

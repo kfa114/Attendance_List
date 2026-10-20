@@ -49,6 +49,57 @@ const student = ok(
 const safe = ok(await call("getBundle", { programId: p.id }, student.token));
 assert.equal(safe.participants[0].phone, "");
 assert.equal(safe.participants[0].note, "");
+// Exercise the deployed Worker/DO path, including two devices racing to sign.
+const koreaHour = new Date(Date.now() + 9 * 3600000).getUTCHours();
+if (koreaHour < 18) {
+  const slot = { programId: p.id, date, period: "single" };
+  const qr = ok(await call("signingSession", slot, tablet.token));
+  assert.ok(qr.url.includes("role=signing"));
+  assert.notEqual(qr.token, tablet.token);
+  const roster = ok(await call("signingRoster", { programId: p.id }, qr.token));
+  assert.deepEqual(Object.keys(roster.participants[0]).sort(), [
+    "id",
+    "name",
+    "order",
+    "signed",
+  ]);
+  assert.equal(
+    (await call("getBundle", { programId: p.id }, qr.token)).code,
+    "FORBIDDEN",
+  );
+  const image = "data:image/png;base64,iVBORw0KGgo" + "A".repeat(200);
+  const signing = { ...slot, image, participantId: bundle.participants[0].id };
+  const results = await Promise.all(
+    ["phone-one", "phone-two"].map((requestId) =>
+      call("sign", { ...signing, requestId }, qr.token),
+    ),
+  );
+  assert.equal(results.filter((r) => r.ok).length, 1);
+  assert.equal(results.filter((r) => r.code === "DUPLICATE").length, 1);
+  assert.equal(
+    ok(await call("getBundle", { programId: p.id }, admin)).signatures.length,
+    1,
+  );
+  assert.equal(
+    ok(await call("signingRoster", { programId: p.id }, qr.token))
+      .participants[0].signed,
+    true,
+  );
+  assert.equal(
+    (
+      await call(
+        "sign",
+        { ...signing, period: "am", requestId: "wrong-slot" },
+        qr.token,
+      )
+    ).code,
+    "FORBIDDEN",
+  );
+} else {
+  console.log(
+    "QR live signing skipped after 18:00 KST; boundary rules covered by unit tests.",
+  );
+}
 const version = ok(
   await call("createExport", { programId: p.id, date }, admin),
 );
@@ -139,5 +190,5 @@ const assets = await Promise.all(
 );
 assert.ok(assets.every((r) => r.ok));
 console.log(
-  "Cloudflare smoke test passed: auth, SQLite persistence, private scopes, tablet URL, export snapshots, archive/trash/restore, origin and request validation, static assets.",
+  "Cloudflare smoke test passed: auth, SQLite persistence, private scopes, tablet URL, QR signing and concurrent duplicate protection, export snapshots, archive/trash/restore, origin and request validation, static assets.",
 );

@@ -23,7 +23,10 @@ export function Student({ programId }: { programId: string }) {
   });
   const [bundle, setBundle] = useState<Bundle>();
   const [last4, setLast4] = useState("");
-  const [name, setName] = useState("");
+  const [participantId, setParticipantId] = useState("");
+  const [candidates, setCandidates] = useState<
+    { id: string; name: string; order: number }[]
+  >([]);
   const [needsName, setNeedsName] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -54,13 +57,21 @@ export function Student({ programId }: { programId: string }) {
     setError("");
     setBusy(true);
     try {
-      const s = await request<Session & { needsName?: boolean }>(
+      const s = await request<
+        Session & { needsName?: boolean; candidates?: typeof candidates }
+      >(
         "studentLogin",
-        { programId, last4, name: needsName ? name : undefined },
+        {
+          programId,
+          last4,
+          participantId: needsName ? participantId : undefined,
+        },
         "",
       );
-      if (s.needsName) setNeedsName(true);
-      else {
+      if (s.needsName) {
+        setNeedsName(true);
+        setCandidates(s.candidates || []);
+      } else {
         setSession(s);
         sessionStorage.setItem(`student:${programId}`, JSON.stringify(s));
       }
@@ -99,22 +110,32 @@ export function Student({ programId }: { programId: string }) {
           {error && <Notice error>{error}</Notice>}
           {needsName ? (
             <>
-              <Notice>같은 번호가 있습니다. 이름을 입력해주세요.</Notice>
-              <label className="field">
-                이름
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoFocus
-                  autoComplete="name"
-                />
-              </label>
+              <Notice>같은 번호가 있습니다. 본인의 이름을 선택해주세요.</Notice>
+              <div
+                className="identity-choices"
+                role="group"
+                aria-label="본인 이름 선택"
+              >
+                {candidates.map((person) => (
+                  <button
+                    type="button"
+                    key={person.id}
+                    className={`identity-choice ${participantId === person.id ? "selected" : ""}`}
+                    aria-pressed={participantId === person.id}
+                    onClick={() => setParticipantId(person.id)}
+                  >
+                    <strong>{person.name}</strong>
+                    <span>명단 {person.order}번</span>
+                  </button>
+                ))}
+              </div>
               <button
                 type="button"
                 className="btn text"
                 onClick={() => {
                   setNeedsName(false);
-                  setName("");
+                  setParticipantId("");
+                  setCandidates([]);
                 }}
               >
                 번호 다시 입력
@@ -138,7 +159,7 @@ export function Student({ programId }: { programId: string }) {
           )}
           <button
             className="btn primary full"
-            disabled={busy || (!needsName && last4.length !== 4)}
+            disabled={busy || (needsName ? !participantId : last4.length !== 4)}
           >
             {busy ? "조회 중…" : "내 출결 조회"}
             <ArrowRight size={17} />

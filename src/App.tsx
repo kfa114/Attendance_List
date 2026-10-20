@@ -30,12 +30,15 @@ import type { ProgramSummary, Program, Role } from "./domain/model";
 import { bootstrap, isGas, isLocalPreview, login, request } from "./api";
 import { Badge, Empty, Modal, Notice, Spinner } from "./components/ui";
 import { ProgramEditor } from "./features/ProgramEditor";
+import { MobileSigning } from "./features/MobileSigning";
 import { ProgramPage } from "./features/ProgramPage";
 function route(hash = location.hash) {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   return {
     programId: params.get("program") || "",
-    role: (["student", "tablet", "admin"].includes(params.get("role") || "")
+    role: (["student", "tablet", "admin", "signing"].includes(
+      params.get("role") || "",
+    )
       ? params.get("role")
       : "admin") as Role,
     scopedToken: params.get("token") || "",
@@ -249,6 +252,11 @@ export default function App() {
         <main className="main-content">
           {!routeReady ? (
             <Spinner />
+          ) : path.programId && path.role === "signing" ? (
+            <MobileSigning
+              programId={path.programId}
+              token={path.scopedToken}
+            />
           ) : loginRequired ? (
             <Login
               onLogin={(s) => {

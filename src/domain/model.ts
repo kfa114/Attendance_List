@@ -1,5 +1,5 @@
 export type Period = "am" | "pm" | "single";
-export type Role = "student" | "tablet" | "admin";
+export type Role = "student" | "tablet" | "admin" | "signing";
 export interface Program {
   id: string;
   title: string;
@@ -101,7 +101,9 @@ export interface ProgramInput {
 }
 export interface Session {
   token: string;
-  kind: "admin" | "student" | "tablet";
+  kind: "admin" | "student" | "tablet" | "signing";
+  date?: string;
+  period?: Period;
   programId?: string;
   participantId?: string;
   expiresAt: number;

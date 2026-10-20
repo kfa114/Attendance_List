@@ -11,7 +11,7 @@ export function SignatureDialog({
   close,
   save,
 }: {
-  participant: Participant;
+  participant: Pick<Participant, "name">;
   date: string;
   period: Period;
   close: () => void;

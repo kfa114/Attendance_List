@@ -7,7 +7,6 @@ import {
   isClosed,
   koreaDate,
   LIMITS,
-  normalizePhone,
   stateFor,
   validateProgram,
 } from "../src/domain/rules";
@@ -152,8 +151,18 @@ export class Service {
       let matches = this.db
         .list<Participant>("participants", p.id)
         .filter((r) => r.phone.endsWith(last4));
-      if (matches.length > 1 && !d.name) return { needsName: true };
-      if (d.name)
+      if (matches.length > 1 && !d.name && !d.participantId)
+        return {
+          needsName: true,
+          candidates: matches.map(({ id, name, order }) => ({
+            id,
+            name,
+            order,
+          })),
+        };
+      if (d.participantId)
+        matches = matches.filter((r) => r.id === d.participantId);
+      else if (d.name)
         matches = matches.filter((r) => r.name === String(d.name).trim());
       if (matches.length !== 1)
         throw new AppError(
@@ -221,6 +230,8 @@ export class Service {
       });
     }
     if (req.action === "getBundle") {
+      if (session.kind === "signing")
+        throw new AppError("휴대폰 서명 화면을 이용해주세요.", "FORBIDDEN");
       this.scoped(session, d.programId);
       const b = this.bundle(d.programId);
       if (session.kind === "admin") return b;
@@ -363,10 +374,74 @@ export class Service {
         url: `${this.rt.appUrl()}#program=${encodeURIComponent(d.programId)}&role=tablet&token=${s.token}`,
       };
     }
+    if (req.action === "signingSession") {
+      if (!["admin", "tablet"].includes(session.kind))
+        throw new AppError("현장 기기에서 QR을 생성해주세요.", "FORBIDDEN");
+      this.scoped(session, d.programId);
+      const p = this.program(d.programId);
+      this.enabled(p);
+      this.validSlot(p, d);
+      if (!canSign(d.date, d.period, this.rt.now()))
+        throw new AppError(
+          "오늘 교육일의 마감 전까지 QR을 생성할 수 있습니다.",
+          "CLOSED",
+        );
+      const s = this.issue("signing", {
+        programId: p.id,
+        date: d.date,
+        period: d.period,
+        expiresAt: Math.min(
+          session.expiresAt,
+          this.rt.now().getTime() + 6 * 3600_000,
+        ),
+        by: "개인 휴대폰",
+      });
+      return {
+        token: s.token,
+        expiresAt: s.expiresAt,
+        url: `${this.rt.appUrl()}#program=${encodeURIComponent(p.id)}&role=signing&token=${s.token}`,
+      };
+    }
+    if (req.action === "signingRoster") {
+      if (session.kind !== "signing")
+        throw new AppError("현장의 QR을 다시 스캔해주세요.", "FORBIDDEN");
+      this.scoped(session, d.programId);
+      const p = this.program(d.programId);
+      this.enabled(p);
+      this.validSlot(p, session);
+      const signatures = this.db.list<Signature>("signatures", p.id);
+      return {
+        title: p.title,
+        date: session.date,
+        period: session.period,
+        open: canSign(session.date!, session.period!, this.rt.now()),
+        participants: this.db
+          .list<Participant>("participants", p.id)
+          .map(({ id, name, order }) => ({
+            id,
+            name,
+            order,
+            signed: signatures.some(
+              (s) =>
+                s.participantId === id &&
+                s.date === session.date &&
+                s.period === session.period,
+            ),
+          })),
+      };
+    }
     if (req.action === "sign") {
       this.scoped(session, d.programId);
-      if (!["admin", "tablet"].includes(session.kind))
+      if (!["admin", "tablet", "signing"].includes(session.kind))
         throw new AppError("현장 태블릿에서 서명해주세요.", "FORBIDDEN");
+      if (
+        session.kind === "signing" &&
+        (session.date !== d.date || session.period !== d.period)
+      )
+        throw new AppError(
+          "QR에 지정된 교육일과 서명 시간만 사용할 수 있습니다.",
+          "FORBIDDEN",
+        );
       return this.db.lock(() => {
         const p = this.program(d.programId);
         this.enabled(p);
