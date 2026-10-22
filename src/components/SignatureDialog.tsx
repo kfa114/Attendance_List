@@ -65,30 +65,49 @@ export function SignatureDialog({
       active = false;
     };
   }, [saved?.programId, saved?.participantId, saved?.token, date, period]);
+  const baseImage = useRef<
+    { image: HTMLImageElement; sourceId: string } | undefined
+  >(undefined);
+  const redraw = useRef<() => void>(() => {});
+  const generation = useRef(0);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [guideSize, setGuideSize] = useState(64);
+  const locked = busy || loadingPreview;
   async function reuse() {
-    if (!saved || !stored?.available || !stored.sourceId || busy) return;
-    setBusy(true);
+    if (!saved || !stored?.available || !stored.sourceId || locked) return;
+    const current = ++generation.current;
+    setLoadingPreview(true);
     setError("");
     pad.current?.off();
     try {
-      await request(
-        "reuseSignature",
+      const result = await request<{ image: string; sourceId: string }>(
+        "savedSignaturePreview",
         {
           programId: saved.programId,
           participantId: saved.participantId,
           date,
           period,
           sourceId: stored.sourceId,
-          requestId: requestId.current,
         },
         saved.token,
       );
-      await saved.complete();
-      close();
+      const image = new Image();
+      image.src = result.image;
+      await image.decode();
+      if (generation.current !== current) return;
+      baseImage.current = { image, sourceId: result.sourceId };
+      pad.current?.clear();
+      redraw.current();
+      setEmpty(false);
+      setLoaded(true);
     } catch (e) {
-      setError((e as Error).message);
-      pad.current?.on();
-      setBusy(false);
+      if (generation.current === current) setError((e as Error).message);
+    } finally {
+      if (generation.current === current) {
+        pad.current?.on();
+        setLoadingPreview(false);
+      }
     }
   }
   useEffect(() => {
@@ -102,6 +121,28 @@ export function SignatureDialog({
     pad.current = p;
     let oldW = 0,
       oldH = 0;
+    const paint = () => {
+      const data = p.toData();
+      p.clear();
+      const base = baseImage.current?.image;
+      if (base) {
+        const scale = Math.min(
+          (c.offsetWidth * 0.9) / base.naturalWidth,
+          (c.offsetHeight * 0.9) / base.naturalHeight,
+        );
+        const w = base.naturalWidth * scale,
+          h = base.naturalHeight * scale;
+        c.getContext("2d")!.drawImage(
+          base,
+          (c.offsetWidth - w) / 2,
+          (c.offsetHeight - h) / 2,
+          w,
+          h,
+        );
+      }
+      p.fromData(data, { clear: false });
+    };
+    redraw.current = paint;
     const resize = () => {
       const data = p.toData();
       const w = c.offsetWidth,
@@ -120,24 +161,52 @@ export function SignatureDialog({
         );
         p.fromData(data);
       }
+      paint();
+      const measure = document.createElement("canvas").getContext("2d")!;
+      measure.font = "100px sans-serif";
+      setGuideSize(
+        Math.min(
+          ((w * 0.7) /
+            Math.max(1, measure.measureText(participant.name).width)) *
+            100,
+          h * 0.7,
+        ),
+      );
       oldW = w;
       oldH = h;
     };
     const observer = new ResizeObserver(resize);
     observer.observe(c);
-    p.addEventListener("endStroke", () => setEmpty(p.isEmpty()));
+    p.addEventListener("endStroke", () =>
+      setEmpty(!baseImage.current && p.isEmpty()),
+    );
     return () => {
+      generation.current++;
       observer.disconnect();
       p.off();
     };
   }, []);
   async function submit() {
-    if (pad.current?.isEmpty() || busy) return;
+    if (empty || locked) return;
     setBusy(true);
     setError("");
     pad.current?.off();
     try {
-      await save(pad.current!.toDataURL("image/png"), requestId.current);
+      if (saved && baseImage.current && pad.current!.toData().length === 0) {
+        await request(
+          "reuseSignature",
+          {
+            programId: saved.programId,
+            participantId: saved.participantId,
+            date,
+            period,
+            sourceId: baseImage.current.sourceId,
+            requestId: requestId.current,
+          },
+          saved.token,
+        );
+        await saved.complete();
+      } else await save(pad.current!.toDataURL("image/png"), requestId.current);
       close();
     } catch (e) {
       setError((e as Error).message);
@@ -149,7 +218,7 @@ export function SignatureDialog({
     <Modal
       title="본인 서명"
       close={() => {
-        if (!busy) close();
+        if (!locked) close();
       }}
     >
       <div className="modal-body">
@@ -166,19 +235,22 @@ export function SignatureDialog({
           <div className="saved-signature-action">
             <button
               className="btn soft full"
-              disabled={busy || !stored?.available}
+              disabled={locked || !stored?.available}
               onClick={reuse}
             >
               <Download size={18} />
-              {stored === undefined && !lookupError
-                ? "저장된 서명 확인 중…"
-                : stored?.available
-                  ? "저장된 서명 불러오기"
-                  : "저장된 서명 없음"}
+              {loadingPreview
+                ? "서명 불러오는 중…"
+                : stored === undefined && !lookupError
+                  ? "저장된 서명 확인 중…"
+                  : stored?.available
+                    ? "저장된 서명 불러오기"
+                    : "저장된 서명 없음"}
             </button>
             {stored?.available && (
               <p className="small muted">
-                {stored.date}에 작성한 본인 서명을 오늘 출석에 반영합니다.
+                {stored.date}에 작성한 서명을 불러온 뒤 확인하고 ‘서명 완료’를
+                눌러주세요.
               </p>
             )}
             {lookupError && <p className="small muted">{lookupError}</p>}
@@ -188,14 +260,27 @@ export function SignatureDialog({
         <div className="signature-surface">
           <canvas aria-label="이름을 쓰는 서명 영역" ref={canvas} />
           {empty && (
-            <span className="signature-placeholder">이름을 써주세요</span>
+            <span
+              className="signature-placeholder"
+              aria-hidden="true"
+              style={{ fontSize: guideSize }}
+            >
+              {participant.name}
+            </span>
           )}
         </div>
+        {loaded && (
+          <p className="small muted" role="status">
+            서명을 불러왔습니다. 확인 후 ‘서명 완료’를 눌러야 출석에 반영됩니다.
+          </p>
+        )}
         <button
           className="btn text"
-          disabled={busy}
+          disabled={locked}
           onClick={() => {
+            baseImage.current = undefined;
             pad.current?.clear();
+            setLoaded(false);
             setEmpty(true);
           }}
         >
@@ -204,12 +289,12 @@ export function SignatureDialog({
         </button>
       </div>
       <div className="modal-footer">
-        <button className="btn secondary" disabled={busy} onClick={close}>
+        <button className="btn secondary" disabled={locked} onClick={close}>
           취소
         </button>
         <button
           className="btn primary"
-          disabled={empty || busy}
+          disabled={empty || locked}
           onClick={submit}
         >
           {busy ? (

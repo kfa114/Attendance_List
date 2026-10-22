@@ -1815,7 +1815,9 @@ td .small {
   place-items: center;
   color: #c2ccda;
   font-size: 23px;
-  letter-spacing: 3px;
+  letter-spacing: 0;
+  font-family: sans-serif;
+  white-space: nowrap;
   pointer-events: none;
 }
 .contact-list {

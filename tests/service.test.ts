@@ -908,3 +908,49 @@ test("저장 서명 불러오기는 다른 프로그램·미래/마감·교육�
     "CLOSED",
   );
 });
+
+test("서명 미리보기는 출석을 저장하지 않고 최종 확인 후에만 반영", () => {
+  const f = fixture();
+  const person = f.db.list<any>("participants", f.p.id)[0];
+  const first = {
+    programId: f.p.id,
+    participantId: person.id,
+    date: "2026-10-15",
+    period: "am",
+  };
+  ok(f.call("sign", { ...first, image, requestId: "preview-source" }, f.admin));
+  const source = f.db.list<any>("signatures", f.p.id)[0];
+  f.rt.image = () => image;
+  f.rt.at = "2026-10-16T00:00:00Z";
+  f.admin = ok(f.call("login", { secret: "test-secret" })).token;
+  const slot = { ...first, date: "2026-10-16", sourceId: source.id };
+  const qr = ok(f.call("signingSession", slot, f.admin));
+  const before = f.db.list<any>("signatures", f.p.id).length;
+  assert.deepEqual(ok(f.call("savedSignaturePreview", slot, qr.token)), {
+    image,
+    sourceId: source.id,
+  });
+  assert.equal(f.db.list<any>("signatures", f.p.id).length, before);
+  assert.equal(
+    f.call("savedSignaturePreview", { ...slot, period: "pm" }, qr.token).code,
+    "FORBIDDEN",
+  );
+  assert.equal(
+    f.call(
+      "savedSignaturePreview",
+      { ...slot, participantId: "another" },
+      qr.token,
+    ).ok,
+    false,
+  );
+  ok(f.call("reuseSignature", { ...slot, requestId: "confirmed" }, qr.token));
+  assert.equal(f.db.list<any>("signatures", f.p.id).length, before + 1);
+  ok(f.call("cancelSignature", { ...first, signatureId: source.id }, f.admin));
+  assert.equal(
+    f.call("savedSignaturePreview", slot, qr.token).code,
+    "CONFLICT",
+  );
+  f.rt.at = "2026-10-16T04:00:00Z";
+  f.admin = ok(f.call("login", { secret: "test-secret" })).token;
+  assert.equal(f.call("savedSignaturePreview", slot, f.admin).code, "CLOSED");
+});

@@ -522,6 +522,18 @@ export class Service {
         ? { available: true, sourceId: source.id, date: source.date }
         : { available: false };
     }
+    if (req.action === "savedSignaturePreview") {
+      const p = this.signingAccess(session, d);
+      if (!canSign(d.date, d.period, this.rt.now()))
+        throw new AppError("서명이 마감됐습니다.", "CLOSED");
+      const source = this.savedSignature(p.id, d.participantId, d.date);
+      if (!source || source.id !== d.sourceId)
+        throw new AppError(
+          "저장된 서명이 변경되었거나 취소됐습니다.",
+          "CONFLICT",
+        );
+      return { image: this.rt.image(source.fileId), sourceId: source.id };
+    }
     if (req.action === "sign" || req.action === "reuseSignature") {
       return this.db.lock(() => {
         const p = this.signingAccess(session, d);
