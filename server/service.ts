@@ -84,11 +84,51 @@ export class Service {
     this.rt.saveSession(s);
     return s;
   }
+  private signatures(programId: string): Signature[] {
+    return this.db
+      .list<Signature>("signatures", programId)
+      .filter((s) => !s.canceledAt);
+  }
+  private savedSignature(
+    programId: string,
+    participantId: string,
+    date: string,
+  ) {
+    return this.signatures(programId)
+      .filter(
+        (s) =>
+          s.participantId === participantId &&
+          s.date < date &&
+          !s.sourceSignatureId,
+      )
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || b.signedAt.localeCompare(a.signedAt),
+      )[0];
+  }
+  private signingAccess(session: Session, data: any) {
+    this.scoped(session, data.programId);
+    if (!["admin", "tablet", "signing"].includes(session.kind))
+      throw new AppError("현장 서명 화면을 이용해주세요.", "FORBIDDEN");
+    if (
+      session.kind === "signing" &&
+      (session.date !== data.date || session.period !== data.period)
+    )
+      throw new AppError(
+        "QR에 지정된 교육일과 서명 시간만 사용할 수 있습니다.",
+        "FORBIDDEN",
+      );
+    const p = this.program(data.programId);
+    this.enabled(p);
+    this.validSlot(p, data);
+    this.participant(p.id, data.participantId);
+    return p;
+  }
   private bundle(id: string): Bundle {
     return {
       program: this.program(id),
       participants: this.db.list("participants", id),
-      signatures: this.db.list("signatures", id),
+      signatures: this.signatures(id),
       absences: this.db.list("absences", id),
       decisions: this.db.list("decisions", id),
       contacts: this.db.list("contacts", id),
@@ -319,7 +359,11 @@ export class Service {
         const input = validateProgram(d);
         const b = this.bundle(p.id);
         const usedDates = new Set(
-          [...b.signatures, ...b.absences, ...b.decisions].map((r) => r.date),
+          [
+            ...this.db.list<Signature>("signatures", p.id),
+            ...b.absences,
+            ...b.decisions,
+          ].map((r) => r.date),
         );
         if ([...usedDates].some((date) => !input.dates.includes(date)))
           throw new AppError("기록이 있는 교육일은 제거할 수 없습니다.");
@@ -335,7 +379,9 @@ export class Service {
         if (b.participants.some((r) => !ids.includes(r.id)))
           throw new AppError("저장된 참여자는 제거할 수 없습니다.");
         if (
-          (b.signatures.length || b.decisions.length || b.absences.length) &&
+          (this.db.list<Signature>("signatures", p.id).length ||
+            b.decisions.length ||
+            b.absences.length) &&
           ids.some((id: string) => !id)
         )
           throw new AppError(
@@ -409,7 +455,7 @@ export class Service {
       const p = this.program(d.programId);
       this.enabled(p);
       this.validSlot(p, session);
-      const signatures = this.db.list<Signature>("signatures", p.id);
+      const signatures = this.signatures(p.id);
       return {
         title: p.title,
         date: session.date,
@@ -430,31 +476,61 @@ export class Service {
           })),
       };
     }
-    if (req.action === "sign") {
-      this.scoped(session, d.programId);
-      if (!["admin", "tablet", "signing"].includes(session.kind))
-        throw new AppError("현장 태블릿에서 서명해주세요.", "FORBIDDEN");
-      if (
-        session.kind === "signing" &&
-        (session.date !== d.date || session.period !== d.period)
-      )
-        throw new AppError(
-          "QR에 지정된 교육일과 서명 시간만 사용할 수 있습니다.",
-          "FORBIDDEN",
-        );
+    if (req.action === "cancelSignature") {
+      this.auth(req.token, "admin");
       return this.db.lock(() => {
         const p = this.program(d.programId);
         this.enabled(p);
         this.validSlot(p, d);
         this.participant(p.id, d.participantId);
-        const existing = this.db
+        const signature = this.db
           .list<Signature>("signatures", p.id)
           .find(
-            (r) =>
-              r.participantId === d.participantId &&
-              r.date === d.date &&
-              r.period === d.period,
+            (s) =>
+              s.id === d.signatureId &&
+              s.participantId === d.participantId &&
+              s.date === d.date &&
+              s.period === d.period,
           );
+        if (!signature)
+          throw new AppError(
+            "취소할 서명을 찾을 수 없습니다. 새로고침해주세요.",
+            "CONFLICT",
+          );
+        if (signature.canceledAt) return true;
+        this.db.put("signatures", {
+          ...signature,
+          canceledAt: this.rt.now().toISOString(),
+          canceledBy: session.by,
+        });
+        this.db.remove("decisions", `${d.participantId}_${d.date}_${d.period}`);
+        const person = this.participant(p.id, d.participantId);
+        this.audit(
+          p.id,
+          `${person.name} · ${d.date} · ${d.period} 서명 취소`,
+          session.by,
+        );
+        return true;
+      });
+    }
+    if (req.action === "savedSignature") {
+      const p = this.signingAccess(session, d);
+      if (!canSign(d.date, d.period, this.rt.now()))
+        return { available: false };
+      const source = this.savedSignature(p.id, d.participantId, d.date);
+      return source
+        ? { available: true, sourceId: source.id, date: source.date }
+        : { available: false };
+    }
+    if (req.action === "sign" || req.action === "reuseSignature") {
+      return this.db.lock(() => {
+        const p = this.signingAccess(session, d);
+        const existing = this.signatures(p.id).find(
+          (r) =>
+            r.participantId === d.participantId &&
+            r.date === d.date &&
+            r.period === d.period,
+        );
         if (existing) {
           if (existing.requestId === d.requestId) return { signed: true };
           throw new AppError("이미 서명한 교육생입니다.", "DUPLICATE");
@@ -465,20 +541,53 @@ export class Service {
             "CLOSED",
           );
         if (
-          typeof d.image !== "string" ||
-          !/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/=\r\n]+$/.test(
-            d.image,
-          ) ||
-          d.image.length > LIMITS.signatureBytes ||
-          d.image.length < 150 ||
           typeof d.requestId !== "string" ||
+          !d.requestId ||
           d.requestId.length > 100
         )
-          throw new AppError("서명 이미지를 확인해주세요.");
-        const fileId = this.rt.putImage(
-          d.image,
-          `${p.id}_${d.participantId}_${d.date}_${d.period}.png`,
-        );
+          throw new AppError("서명 요청을 확인해주세요.");
+        if (
+          this.db
+            .list<Signature>("signatures", p.id)
+            .some(
+              (s) =>
+                s.canceledAt &&
+                s.participantId === d.participantId &&
+                s.date === d.date &&
+                s.period === d.period &&
+                s.requestId === d.requestId,
+            )
+        )
+          throw new AppError(
+            "취소된 서명 요청입니다. 화면을 닫고 다시 서명해주세요.",
+            "CONFLICT",
+          );
+        let fileId: string;
+        let sourceSignatureId: string | undefined;
+        if (req.action === "reuseSignature") {
+          const source = this.savedSignature(p.id, d.participantId, d.date);
+          if (!source || source.id !== d.sourceId)
+            throw new AppError(
+              "저장된 서명이 변경되었거나 취소됐습니다. 직접 서명해주세요.",
+              "CONFLICT",
+            );
+          fileId = source.fileId;
+          sourceSignatureId = source.id;
+        } else {
+          if (
+            typeof d.image !== "string" ||
+            !/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/=\r\n]+$/.test(
+              d.image,
+            ) ||
+            d.image.length > LIMITS.signatureBytes ||
+            d.image.length < 150
+          )
+            throw new AppError("서명 이미지를 확인해주세요.");
+          fileId = this.rt.putImage(
+            d.image,
+            `${p.id}_${d.participantId}_${d.date}_${d.period}.png`,
+          );
+        }
         try {
           if (!canSign(d.date, d.period, this.rt.now()))
             throw new AppError(
@@ -494,12 +603,20 @@ export class Service {
             fileId,
             signedAt: this.rt.now().toISOString(),
             requestId: d.requestId,
+            ...(sourceSignatureId ? { sourceSignatureId } : {}),
           });
         } catch (e) {
-          this.rt.removeFile(fileId);
+          if (!sourceSignatureId) this.rt.removeFile(fileId);
           throw e;
         }
-        this.audit(p.id, "본인 서명 저장", session.by);
+        const person = this.participant(p.id, d.participantId);
+        this.audit(
+          p.id,
+          sourceSignatureId
+            ? `${person.name} · ${d.date} · ${d.period} 저장된 서명 불러오기`
+            : "본인 서명 저장",
+          session.by,
+        );
         return { signed: true };
       });
     }
@@ -516,14 +633,12 @@ export class Service {
         if (typeof d.absent !== "boolean")
           throw new AppError("신고 내용을 확인해주세요.");
         if (
-          this.db
-            .list<Signature>("signatures", p.id)
-            .some(
-              (r) =>
-                r.participantId === session.participantId &&
-                r.date === d.date &&
-                r.period === d.period,
-            )
+          this.signatures(p.id).some(
+            (r) =>
+              r.participantId === session.participantId &&
+              r.date === d.date &&
+              r.period === d.period,
+          )
         )
           throw new AppError(
             "이미 서명한 출결은 결석 신고를 변경할 수 없습니다.",
@@ -556,14 +671,12 @@ export class Service {
           if (!["present", "absent"].includes(d.result))
             throw new AppError("출석 또는 결석을 선택해주세요.");
           if (
-            this.db
-              .list<Signature>("signatures", p.id)
-              .some(
-                (s) =>
-                  s.participantId === d.participantId &&
-                  s.date === d.date &&
-                  s.period === d.period,
-              )
+            this.signatures(p.id).some(
+              (s) =>
+                s.participantId === d.participantId &&
+                s.date === d.date &&
+                s.period === d.period,
+            )
           )
             throw new AppError("본인 서명이 있는 출결은 변경할 수 없습니다.");
           this.db.put("decisions", {

@@ -66,6 +66,14 @@ export function ProgramPage({
   const [adminTab, setAdminTab] = useState("attendance");
   const [editing, setEditing] = useState(false);
   const [signer, setSigner] = useState<Participant>();
+  const [cancelTarget, setCancelTarget] = useState<{
+    person: Participant;
+    signatureId: string;
+    date: string;
+    period: Period;
+  }>();
+  const [cancelError, setCancelError] = useState("");
+  const [cancelBusy, setCancelBusy] = useState(false);
   const [links, setLinks] = useState<{ student: string; tablet?: string }>();
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState(false);
@@ -595,7 +603,7 @@ export function ProgramPage({
                             <th>이름</th>
                             <th>결석 신고</th>
                             <th>출결 상태</th>
-                            <th>미서명 판단</th>
+                            <th>출결 수정</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -639,10 +647,28 @@ export function ProgramPage({
                                 </td>
                                 <td>
                                   {isSigned(r.id) ? (
-                                    <span className="small muted">
-                                      <Check size={14} />
-                                      본인 서명
-                                    </span>
+                                    <button
+                                      className="btn secondary compact danger-text"
+                                      aria-label={`${r.name} 서명 취소`}
+                                      disabled={
+                                        busy ||
+                                        bundle.program.status !== "active"
+                                      }
+                                      onClick={() => {
+                                        const signed = slotSignatures.find(
+                                          (s) => s.participantId === r.id,
+                                        )!;
+                                        setCancelError("");
+                                        setCancelTarget({
+                                          person: r,
+                                          signatureId: signed.id,
+                                          date,
+                                          period,
+                                        });
+                                      }}
+                                    >
+                                      서명 취소
+                                    </button>
                                   ) : (
                                     <div className="inline">
                                       <button
@@ -857,6 +883,15 @@ export function ProgramPage({
       {signer && (
         <SignatureDialog
           participant={signer}
+          saved={{
+            programId,
+            participantId: signer.id,
+            token,
+            complete: async () => {
+              await load(true);
+              toast("저장된 서명을 반영했습니다.");
+            },
+          }}
           date={date}
           period={period}
           close={() => setSigner(undefined)}
@@ -877,6 +912,66 @@ export function ProgramPage({
             toast("서명이 저장됐습니다.");
           }}
         />
+      )}
+      {cancelTarget && (
+        <Modal
+          title="서명을 취소할까요?"
+          close={() => {
+            if (!cancelBusy) setCancelTarget(undefined);
+          }}
+        >
+          <div className="modal-body">
+            <h3>
+              {cancelTarget.person.name} · {formatDate(cancelTarget.date)} ·{" "}
+              {PERIOD_LABEL[cancelTarget.period]}
+            </h3>
+            <p>이 서명과 기존 강사 판단을 취소하고 미서명 상태로 되돌립니다.</p>
+            <Notice>
+              오늘 교육일의 마감 전에는 다시 서명할 수 있습니다. 취소 이력과
+              이미 생성한 PDF 버전은 보존됩니다.
+            </Notice>
+            {cancelError && <Notice error>{cancelError}</Notice>}
+          </div>
+          <div className="modal-footer">
+            <button
+              className="btn secondary"
+              disabled={cancelBusy}
+              onClick={() => setCancelTarget(undefined)}
+            >
+              돌아가기
+            </button>
+            <button
+              className="btn primary"
+              disabled={cancelBusy}
+              onClick={async () => {
+                setCancelBusy(true);
+                setCancelError("");
+                try {
+                  await request(
+                    "cancelSignature",
+                    {
+                      programId,
+                      participantId: cancelTarget.person.id,
+                      signatureId: cancelTarget.signatureId,
+                      date: cancelTarget.date,
+                      period: cancelTarget.period,
+                    },
+                    token,
+                  );
+                  setCancelTarget(undefined);
+                  await load(true);
+                  toast("서명을 취소했습니다. 다시 서명할 수 있어요.");
+                } catch (e) {
+                  setCancelError((e as Error).message);
+                } finally {
+                  setCancelBusy(false);
+                }
+              }}
+            >
+              {cancelBusy ? "취소 중…" : "서명 취소 확인"}
+            </button>
+          </div>
+        </Modal>
       )}
       {links && (
         <Modal title="프로그램 전용 링크" close={() => setLinks(undefined)}>

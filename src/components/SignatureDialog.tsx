@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import SignaturePad from "signature_pad";
-import { Eraser, Check, LoaderCircle } from "lucide-react";
+import { request } from "../api";
+import { Eraser, Check, LoaderCircle, Download } from "lucide-react";
 import { Modal, Notice } from "./ui";
 import { formatDate } from "../domain/rules";
 import { PERIOD_LABEL, type Participant, type Period } from "../domain/model";
@@ -10,12 +11,19 @@ export function SignatureDialog({
   period,
   close,
   save,
+  saved,
 }: {
   participant: Pick<Participant, "name">;
   date: string;
   period: Period;
   close: () => void;
   save: (image: string, requestId: string) => Promise<void>;
+  saved?: {
+    programId: string;
+    participantId: string;
+    token: string;
+    complete: () => Promise<void> | void;
+  };
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const pad = useRef<SignaturePad | null>(null);
@@ -23,6 +31,66 @@ export function SignatureDialog({
   const [empty, setEmpty] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [stored, setStored] = useState<{
+    available: boolean;
+    sourceId?: string;
+    date?: string;
+  }>();
+  const [lookupError, setLookupError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setStored(undefined);
+    setLookupError("");
+    if (saved)
+      request(
+        "savedSignature",
+        {
+          programId: saved.programId,
+          participantId: saved.participantId,
+          date,
+          period,
+        },
+        saved.token,
+      )
+        .then((result) => {
+          if (active) setStored(result);
+        })
+        .catch(() => {
+          if (active)
+            setLookupError(
+              "저장된 서명을 확인하지 못했습니다. 직접 서명해주세요.",
+            );
+        });
+    return () => {
+      active = false;
+    };
+  }, [saved?.programId, saved?.participantId, saved?.token, date, period]);
+  async function reuse() {
+    if (!saved || !stored?.available || !stored.sourceId || busy) return;
+    setBusy(true);
+    setError("");
+    pad.current?.off();
+    try {
+      await request(
+        "reuseSignature",
+        {
+          programId: saved.programId,
+          participantId: saved.participantId,
+          date,
+          period,
+          sourceId: stored.sourceId,
+          requestId: requestId.current,
+        },
+        saved.token,
+      );
+      await saved.complete();
+      close();
+    } catch (e) {
+      setError((e as Error).message);
+      pad.current?.on();
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     const c = canvas.current!;
     const p = new SignaturePad(c, {
@@ -94,6 +162,28 @@ export function SignatureDialog({
         <p className="muted">
           본인 이름을 확인하고 아래에 정자로 서명해주세요.
         </p>
+        {saved && (
+          <div className="saved-signature-action">
+            <button
+              className="btn soft full"
+              disabled={busy || !stored?.available}
+              onClick={reuse}
+            >
+              <Download size={18} />
+              {stored === undefined && !lookupError
+                ? "저장된 서명 확인 중…"
+                : stored?.available
+                  ? "저장된 서명 불러오기"
+                  : "저장된 서명 없음"}
+            </button>
+            {stored?.available && (
+              <p className="small muted">
+                {stored.date}에 작성한 본인 서명을 오늘 출석에 반영합니다.
+              </p>
+            )}
+            {lookupError && <p className="small muted">{lookupError}</p>}
+          </div>
+        )}
         {error && <Notice error>{error}</Notice>}
         <div className="signature-surface">
           <canvas aria-label="이름을 쓰는 서명 영역" ref={canvas} />

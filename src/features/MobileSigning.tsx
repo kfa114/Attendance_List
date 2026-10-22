@@ -121,7 +121,6 @@ export function MobileSigning({
             disabled={!roster.open || p.signed}
             onClick={() => setPerson(p)}
           >
-            <span className="mobile-name-order">{p.order}번</span>
             <strong>{p.name}</strong>
             <span className="mobile-name-state">
               {p.signed ? "서명 완료" : "서명하기 →"}
@@ -133,6 +132,12 @@ export function MobileSigning({
       {person && (
         <SignatureDialog
           participant={person}
+          saved={{
+            programId,
+            participantId: person.id,
+            token,
+            complete: () => setCompleted(person.name),
+          }}
           date={roster.date}
           period={roster.period}
           close={() => setPerson(undefined)}

@@ -30,6 +30,10 @@ export interface Signature {
   fileId: string;
   signedAt: string;
   requestId: string;
+  /** Reused signatures reference a prior handwritten record; original files stay immutable. */
+  sourceSignatureId?: string;
+  canceledAt?: string;
+  canceledBy?: string;
 }
 export interface Absence {
   id: string;

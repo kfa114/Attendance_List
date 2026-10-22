@@ -172,3 +172,103 @@ test("서명 파일을 포함한 출력 스냅샷은 이후 상태와 독립적�
   f.rt.removeFile(id);
   assert.throws(() => f.rt.pdf(file.fileId));
 });
+
+test("SQLite 서명 불러오기·취소·재서명 후에도 과거 PDF 이미지가 보존됨", () => {
+  const f = fixture();
+  const now = new Date();
+  const day = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 2, 0),
+  );
+  const date = day.toISOString().slice(0, 10);
+  const before = new Date(day.getTime() - 86400000).toISOString().slice(0, 10);
+  f.rt.now = () => day;
+  const admin = f.call("login", {}).data.token;
+  const program = f.call(
+    "createProgram",
+    {
+      title: "SQLite 서명 검증",
+      signatureEnabled: false,
+      dates: [before, date],
+      participants: [{ name: "가상 교육생", phone: "01000003333", note: "" }],
+    },
+    admin,
+  ).data;
+  const participant = f.repo.list<any>("participants", program.id)[0];
+  const image = "data:image/png;base64,iVBORw0KGgo" + "A".repeat(200);
+  const fileId = f.rt.putImage(image, "original.png");
+  f.repo.put("signatures", {
+    id: "source",
+    programId: program.id,
+    participantId: participant.id,
+    date: before,
+    period: "single",
+    fileId,
+    requestId: "original",
+    signedAt: before + "T00:00:00Z",
+  });
+  const slot = {
+    programId: program.id,
+    participantId: participant.id,
+    date,
+    period: "single",
+  };
+  assert.equal(
+    f.call(
+      "reuseSignature",
+      { ...slot, sourceId: "source", requestId: "reuse" },
+      admin,
+    ).ok,
+    true,
+  );
+  const version = f.call(
+    "createExport",
+    { programId: program.id, date },
+    admin,
+  ).data;
+  const signature = f.repo
+    .list<any>("signatures", program.id)
+    .find((s) => s.date === date);
+  assert.equal(
+    f.call("cancelSignature", { ...slot, signatureId: signature.id }, admin).ok,
+    true,
+  );
+  assert.equal(
+    f.call("getBundle", { programId: program.id }, admin).data.signatures
+      .length,
+    1,
+  );
+  const download = f.call(
+    "downloadExport",
+    { programId: program.id, exportId: version.id },
+    admin,
+  ).data;
+  assert.equal(download.snapshot.rows[0].single, image);
+  const afterCancel = f.call(
+    "createExport",
+    { programId: program.id, date },
+    admin,
+  ).data;
+  const currentDownload = f.call(
+    "downloadExport",
+    { programId: program.id, exportId: afterCancel.id },
+    admin,
+  ).data;
+  assert.equal(currentDownload.snapshot.rows[0].single, "");
+  assert.equal(
+    f.call("sign", { ...slot, image, requestId: "replacement" }, admin).ok,
+    true,
+  );
+  assert.equal(
+    f.call("getBundle", { programId: program.id }, admin).data.signatures
+      .length,
+    2,
+  );
+  assert.equal(f.rt.image(fileId), image);
+  const later = new SqlRuntime(f.sql, "https://attendance.example");
+  assert.equal(later.image(fileId), image);
+  assert.ok(
+    f.repo
+      .list<any>("signatures", program.id)
+      .find((s) => s.id === signature.id).canceledAt,
+  );
+});

@@ -673,3 +673,238 @@ test("단일 서명 QR, 만료, 보관·휴지통 및 서명 방식 변경 차�
     "AUTH",
   );
 });
+
+test("관리자 서명 취소는 원본·PDF를 보존하고 미서명 복귀·재서명 및 늦은 요청 차단", () => {
+  const f = fixture();
+  const person = f.db.list<any>("participants", f.p.id)[0];
+  const slot = {
+    programId: f.p.id,
+    participantId: person.id,
+    date: "2026-10-15",
+    period: "am",
+  };
+  ok(f.call("decide", { ...slot, result: "present" }, f.admin));
+  ok(f.call("sign", { ...slot, image, requestId: "original" }, f.admin));
+  const signature = ok(f.call("getBundle", { programId: f.p.id }, f.admin))
+    .signatures[0];
+  const oldPdf = ok(
+    f.call("createExport", { programId: f.p.id, date: slot.date }, f.admin),
+  );
+  const originalFile = signature.fileId;
+  ok(
+    f.call("cancelSignature", { ...slot, signatureId: signature.id }, f.admin),
+  );
+  const after = ok(f.call("getBundle", { programId: f.p.id }, f.admin));
+  assert.equal(after.signatures.length, 0);
+  assert.equal(after.decisions.length, 0);
+  assert.equal(after.exports[0].id, oldPdf.id);
+  assert.ok(after.audits.some((a: any) => a.action.includes("서명 취소")));
+  assert.ok(f.db.list<any>("signatures", f.p.id)[0].canceledAt);
+  assert.ok(f.rt.files.includes(originalFile));
+  assert.equal(
+    f.call("sign", { ...slot, image, requestId: "original" }, f.admin).code,
+    "CONFLICT",
+  );
+  ok(f.call("sign", { ...slot, image, requestId: "new-request" }, f.admin));
+  const replacement = ok(f.call("getBundle", { programId: f.p.id }, f.admin))
+    .signatures[0];
+  assert.notEqual(replacement.id, signature.id);
+  ok(
+    f.call("cancelSignature", { ...slot, signatureId: signature.id }, f.admin),
+  );
+  assert.equal(
+    ok(f.call("getBundle", { programId: f.p.id }, f.admin)).signatures[0].id,
+    replacement.id,
+  );
+});
+
+test("태블릿·교육생·QR은 서명 취소 불가, 잘못된 대상·보관·휴지통 차단", () => {
+  const f = fixture();
+  const person = f.db.list<any>("participants", f.p.id)[0];
+  const slot = {
+    programId: f.p.id,
+    participantId: person.id,
+    date: "2026-10-15",
+    period: "am",
+  };
+  ok(f.call("sign", { ...slot, image, requestId: "cancel-target" }, f.admin));
+  const signatureId = f.db.list<any>("signatures", f.p.id)[0].id;
+  const tablet = ok(f.call("tabletSession", { programId: f.p.id }, f.admin));
+  const qr = ok(f.call("signingSession", slot, tablet.token));
+  const student = ok(
+    f.call("studentLogin", { programId: f.p.id, last4: "2001" }),
+  );
+  for (const token of [tablet.token, qr.token, student.token, ""])
+    assert.equal(
+      f.call("cancelSignature", { ...slot, signatureId }, token).code,
+      "AUTH",
+    );
+  assert.equal(
+    f.call(
+      "cancelSignature",
+      { ...slot, signatureId, participantId: "wrong" },
+      f.admin,
+    ).ok,
+    false,
+  );
+  assert.equal(
+    f.call("cancelSignature", { ...slot, signatureId: "wrong" }, f.admin).code,
+    "CONFLICT",
+  );
+  const p = f.db.list<any>("programs")[0];
+  p.status = "archived";
+  assert.equal(
+    f.call("cancelSignature", { ...slot, signatureId }, f.admin).ok,
+    false,
+  );
+  p.status = "deleted";
+  assert.equal(
+    f.call("cancelSignature", { ...slot, signatureId }, f.admin).code,
+    "NOT_FOUND",
+  );
+});
+
+test("이전 교육일의 본인 서명만 불러오기, 원본 파일 재사용·출석 반영·재시도·취소", () => {
+  const f = fixture();
+  const people = f.db.list<any>("participants", f.p.id);
+  const first = {
+    programId: f.p.id,
+    participantId: people[0].id,
+    date: "2026-10-15",
+    period: "am",
+  };
+  assert.equal(ok(f.call("savedSignature", first, f.admin)).available, false);
+  ok(f.call("sign", { ...first, image, requestId: "day-one" }, f.admin));
+  assert.equal(
+    ok(f.call("savedSignature", { ...first, period: "pm" }, f.admin)).available,
+    false,
+  );
+  const source = f.db.list<any>("signatures", f.p.id)[0];
+  f.rt.at = "2026-10-16T00:00:00Z";
+  f.admin = ok(f.call("login", { secret: "test-secret" })).token;
+  const slot = { ...first, date: "2026-10-16" };
+  const tablet = ok(f.call("tabletSession", { programId: f.p.id }, f.admin));
+  const qr = ok(f.call("signingSession", slot, tablet.token));
+  const saved = ok(f.call("savedSignature", slot, qr.token));
+  assert.deepEqual(saved, {
+    available: true,
+    sourceId: source.id,
+    date: first.date,
+  });
+  assert.equal(
+    ok(
+      f.call(
+        "savedSignature",
+        { ...slot, participantId: people[1].id },
+        qr.token,
+      ),
+    ).available,
+    false,
+  );
+  assert.equal(
+    f.call(
+      "reuseSignature",
+      {
+        ...slot,
+        participantId: people[1].id,
+        sourceId: source.id,
+        requestId: "forged",
+      },
+      qr.token,
+    ).code,
+    "CONFLICT",
+  );
+  assert.equal(
+    f.call(
+      "reuseSignature",
+      { ...slot, period: "pm", sourceId: source.id, requestId: "wrong-slot" },
+      qr.token,
+    ).code,
+    "FORBIDDEN",
+  );
+  const data = { ...slot, sourceId: source.id, requestId: "day-two" };
+  ok(f.call("reuseSignature", data, qr.token));
+  ok(f.call("reuseSignature", data, qr.token));
+  const current = ok(
+    f.call("getBundle", { programId: f.p.id }, f.admin),
+  ).signatures.find((s: any) => s.date === slot.date);
+  assert.equal(current.sourceSignatureId, source.id);
+  assert.equal(current.fileId, source.fileId);
+  assert.equal(f.rt.files.length, 1);
+  assert.equal(
+    f.call("sign", { ...slot, image, requestId: "other-device" }, tablet.token)
+      .code,
+    "DUPLICATE",
+  );
+  ok(f.call("cancelSignature", { ...slot, signatureId: current.id }, f.admin));
+  assert.equal(
+    ok(f.call("getBundle", { programId: f.p.id }, f.admin)).signatures.length,
+    1,
+  );
+  assert.ok(f.rt.files.includes(source.fileId));
+  assert.equal(f.call("reuseSignature", data, qr.token).code, "CONFLICT");
+  ok(
+    f.call("reuseSignature", { ...data, requestId: "day-two-again" }, qr.token),
+  );
+  ok(f.call("cancelSignature", { ...first, signatureId: source.id }, f.admin));
+  assert.equal(
+    ok(f.call("savedSignature", { ...slot, period: "pm" }, f.admin)).available,
+    false,
+  );
+});
+
+test("저장 서명 불러오기는 다른 프로그램·미래/마감·교육생·취소된 원본을 허용하지 않음", () => {
+  const f = fixture();
+  const person = f.db.list<any>("participants", f.p.id)[0];
+  const slot = {
+    programId: f.p.id,
+    participantId: person.id,
+    date: "2026-10-15",
+    period: "am",
+  };
+  ok(f.call("sign", { ...slot, image, requestId: "source" }, f.admin));
+  const source = f.db.list<any>("signatures", f.p.id)[0];
+  const other = f.create("다른 프로그램");
+  f.rt.at = "2026-10-16T00:00:00Z";
+  f.admin = ok(f.call("login", { secret: "test-secret" })).token;
+  const day2 = { ...slot, date: "2026-10-16" };
+  const student = ok(
+    f.call("studentLogin", { programId: f.p.id, last4: "2001" }),
+  );
+  assert.equal(f.call("savedSignature", day2, student.token).code, "FORBIDDEN");
+  const otherPerson = f.db.list<any>("participants", other.id)[0];
+  assert.equal(
+    f.call(
+      "reuseSignature",
+      {
+        ...day2,
+        programId: other.id,
+        participantId: otherPerson.id,
+        sourceId: source.id,
+        requestId: "cross-program",
+      },
+      f.admin,
+    ).code,
+    "CONFLICT",
+  );
+  ok(f.call("cancelSignature", { ...slot, signatureId: source.id }, f.admin));
+  assert.equal(
+    f.call(
+      "reuseSignature",
+      { ...day2, sourceId: source.id, requestId: "canceled-source" },
+      f.admin,
+    ).code,
+    "CONFLICT",
+  );
+  f.rt.at = "2026-10-16T04:00:00Z";
+  f.admin = ok(f.call("login", { secret: "test-secret" })).token;
+  assert.equal(ok(f.call("savedSignature", day2, f.admin)).available, false);
+  assert.equal(
+    f.call(
+      "reuseSignature",
+      { ...day2, sourceId: source.id, requestId: "late" },
+      f.admin,
+    ).code,
+    "CLOSED",
+  );
+});
