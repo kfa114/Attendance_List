@@ -1813,7 +1813,8 @@ td .small {
   inset: 0;
   display: grid;
   place-items: center;
-  color: #c2ccda;
+  color: #e5e5e5;
+  mix-blend-mode: multiply;
   font-size: 23px;
   letter-spacing: 0;
   font-family: sans-serif;
@@ -1846,6 +1847,12 @@ td .small {
 .contact-row input,
 .contact-row select {
   font-size: 11px;
+  height: 44px;
+  min-height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: normal;
+  align-self: center;
 }
 .history > div {
   display: flex;

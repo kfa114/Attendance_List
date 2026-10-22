@@ -259,15 +259,13 @@ export function SignatureDialog({
         {error && <Notice error>{error}</Notice>}
         <div className="signature-surface">
           <canvas aria-label="이름을 쓰는 서명 영역" ref={canvas} />
-          {empty && (
-            <span
-              className="signature-placeholder"
-              aria-hidden="true"
-              style={{ fontSize: guideSize }}
-            >
-              {participant.name}
-            </span>
-          )}
+          <span
+            className="signature-placeholder"
+            aria-hidden="true"
+            style={{ fontSize: guideSize }}
+          >
+            {participant.name}
+          </span>
         </div>
         {loaded && (
           <p className="small muted" role="status">
