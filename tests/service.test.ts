@@ -954,3 +954,58 @@ test("서명 미리보기는 출석을 저장하지 않고 최종 확인 후에�
   f.admin = ok(f.call("login", { secret: "test-secret" })).token;
   assert.equal(f.call("savedSignaturePreview", slot, f.admin).code, "CLOSED");
 });
+
+test("휴지통 이동 시점을 기록하고 복원·재삭제는 새 7일 기한, 반복 삭제는 연장하지 않음", () => {
+  const f = fixture();
+  let p = ok(
+    f.call(
+      "setProgramStatus",
+      { programId: f.p.id, revision: f.p.revision, status: "deleted" },
+      f.admin,
+    ),
+  );
+  const firstDeletedAt = p.deletedAt;
+  assert.equal(firstDeletedAt, new Date(f.rt.at).toISOString());
+  f.rt.at = "2026-10-15T04:59:59Z";
+  p = ok(
+    f.call(
+      "setProgramStatus",
+      { programId: p.id, revision: p.revision, status: "deleted" },
+      f.admin,
+    ),
+  );
+  assert.equal(p.deletedAt, firstDeletedAt);
+  p = ok(
+    f.call(
+      "setProgramStatus",
+      { programId: p.id, revision: p.revision, status: "active" },
+      f.admin,
+    ),
+  );
+  assert.equal(p.deletedAt, undefined);
+  p = ok(
+    f.call(
+      "setProgramStatus",
+      { programId: p.id, revision: p.revision, status: "deleted" },
+      f.admin,
+    ),
+  );
+  assert.equal(p.deletedAt, new Date(f.rt.at).toISOString());
+  assert.notEqual(p.deletedAt, firstDeletedAt);
+  f.rt.at = new Date(Date.parse(p.deletedAt) + 7 * 86400000).toISOString();
+  f.admin = ok(f.call("login", { secret: "test-secret" })).token;
+  assert.equal(
+    ok(f.call("bootstrap", {}, f.admin)).programs.some(
+      (q: any) => q.id === p.id,
+    ),
+    false,
+  );
+  assert.equal(
+    f.call(
+      "setProgramStatus",
+      { programId: p.id, revision: p.revision, status: "active" },
+      f.admin,
+    ).code,
+    "NOT_FOUND",
+  );
+});

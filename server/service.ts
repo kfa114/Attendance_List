@@ -1,3 +1,4 @@
+import { trashDeadline } from "../src/domain/trash";
 import { programPeriods } from "../src/domain/model";
 import type { Repository, Runtime } from "./ports";
 import {
@@ -55,7 +56,12 @@ export class Service {
   }
   private program(id: string, includeDeleted = false): Program {
     const p = this.db.list<Program>("programs").find((p) => p.id === id);
-    if (!p || (!includeDeleted && p.status === "deleted"))
+    if (
+      !p ||
+      (!includeDeleted && p.status === "deleted") ||
+      (trashDeadline(p) !== undefined &&
+        trashDeadline(p)! <= this.rt.now().getTime())
+    )
       throw new AppError("명단을 찾을 수 없습니다.", "NOT_FOUND");
     return p;
   }
@@ -228,11 +234,18 @@ export class Service {
     if (req.action === "bootstrap") {
       this.auth(req.token, "admin");
       return {
-        programs: this.db.list<Program>("programs").map((p) => ({
-          ...p,
-          participantCount: this.db.list<Participant>("participants", p.id)
-            .length,
-        })),
+        programs: this.db
+          .list<Program>("programs")
+          .filter(
+            (p) =>
+              trashDeadline(p) === undefined ||
+              trashDeadline(p)! > this.rt.now().getTime(),
+          )
+          .map((p) => ({
+            ...p,
+            participantCount: this.db.list<Participant>("participants", p.id)
+              .length,
+          })),
         serverNow: this.rt.now().toISOString(),
         mode: this.rt.platform?.() || (this.rt.appUrl() ? "gas" : "local"),
       };
@@ -329,6 +342,12 @@ export class Service {
         const updated: Program = {
           ...p,
           status: d.status,
+          deletedAt:
+            d.status === "deleted"
+              ? p.status === "deleted"
+                ? p.deletedAt || p.updatedAt
+                : this.rt.now().toISOString()
+              : undefined,
           revision: p.revision + 1,
           updatedAt: this.rt.now().toISOString(),
         };

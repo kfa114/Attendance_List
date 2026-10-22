@@ -27,6 +27,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import type { ProgramSummary, Program, Role } from "./domain/model";
+import { trashDeadline } from "./domain/trash";
 import { bootstrap, isGas, isLocalPreview, login, request } from "./api";
 import { Badge, Empty, Modal, Notice, Spinner } from "./components/ui";
 import { ProgramEditor } from "./features/ProgramEditor";
@@ -50,6 +51,7 @@ export default function App() {
   );
   const [path, setPath] = useState(() => route());
   const [routeReady, setRouteReady] = useState(!isGas());
+  const [rostersExpanded, setRostersExpanded] = useState(false);
   const [programs, setPrograms] = useState<ProgramSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
@@ -141,7 +143,7 @@ export default function App() {
       setDeleteTarget(undefined);
       toast(
         status === "deleted"
-          ? "휴지통으로 옮겼습니다. 휴지통에서 복원할 수 있어요."
+          ? "휴지통으로 옮겼습니다. 7일 후 영구 삭제되며, 그 전까지 복원할 수 있어요."
           : status === "archived"
             ? "프로그램을 보관했습니다."
             : "운영 중 목록으로 옮겼습니다.",
@@ -150,7 +152,7 @@ export default function App() {
       const message = (e as Error).message;
       if (deleteTarget) setStatusError(message);
       else setError(message);
-      if ((e as any).code === "CONFLICT") await load();
+      if (["CONFLICT", "NOT_FOUND"].includes((e as any).code)) await load();
     } finally {
       setStatusBusy(false);
     }
@@ -186,12 +188,48 @@ export default function App() {
           <div className="workspace-label">워크스페이스</div>
           <button
             className={`nav-item ${!path.programId ? "selected" : ""}`}
-            onClick={home}
+            aria-expanded={rostersExpanded}
+            aria-controls="sidebar-active-programs"
+            onClick={() => {
+              setRostersExpanded((current) => !current);
+              home();
+            }}
           >
             <LayoutGrid size={19} />
             <span>명단 관리</span>
-            <span className="nav-count">{listed.length}</span>
+            <span className="nav-count">{active.length}</span>
+            <ChevronDown
+              size={16}
+              className={`sidebar-chevron ${rostersExpanded ? "open" : ""}`}
+            />
           </button>
+          {rostersExpanded && (
+            <nav
+              id="sidebar-active-programs"
+              className="sidebar-program-list"
+              aria-label="운영 중인 프로그램"
+            >
+              {active.length ? (
+                [...active]
+                  .sort((a, b) => a.title.localeCompare(b.title, "ko"))
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      className="sidebar-program-link"
+                      title={p.title}
+                      aria-current={
+                        path.programId === p.id ? "page" : undefined
+                      }
+                      onClick={() => open(p)}
+                    >
+                      {p.title}
+                    </button>
+                  ))
+              ) : (
+                <p className="small muted">운영 중인 프로그램이 없어요.</p>
+              )}
+            </nav>
+          )}
           <div className="sidebar-spacer" />
           <div className="sidebar-guide">
             <div className="guide-icon">
@@ -274,6 +312,7 @@ export default function App() {
               initialRole={path.role}
               back={home}
               toast={toast}
+              onProgramChange={load}
             />
           ) : (
             <>
@@ -385,7 +424,9 @@ export default function App() {
                     내 프로그램 <span className="count">{listed.length}</span>
                   </h2>
                   <span className="small muted">
-                    프로그램을 선택해 명단과 출결을 관리하세요.
+                    {filter === "deleted"
+                      ? "휴지통 이동 후 7일이 지나면 명단·서명·PDF가 영구 삭제됩니다."
+                      : "프로그램을 선택해 명단과 출결을 관리하세요."}
                   </span>
                 </div>
                 <div className="list-toolbar">
@@ -540,6 +581,16 @@ export default function App() {
                             </span>
                           </div>
                         </button>
+                        {p.status === "deleted" &&
+                          trashDeadline(p) !== undefined && (
+                            <p className="trash-expiry">
+                              영구 삭제 예정:{" "}
+                              {new Date(trashDeadline(p)!).toLocaleString(
+                                "ko-KR",
+                                { timeZone: "Asia/Seoul" },
+                              )}
+                            </p>
+                          )}
                         <div
                           className="program-actions"
                           aria-label={`${p.title} 관리`}
@@ -630,7 +681,8 @@ export default function App() {
               삭제하고 휴지통으로 옮깁니다.
             </p>
             <Notice>
-              명단과 서명·출결 기록은 보존되며 휴지통에서 복원할 수 있어요.
+              7일 동안 휴지통에서 복원할 수 있어요. 7일 후에는
+              명단·서명·출결·PDF가 자동으로 영구 삭제되며 복원할 수 없습니다.
               휴지통에 있는 동안 교육생·태블릿 링크로 접근할 수 없습니다.
             </Notice>
           </div>

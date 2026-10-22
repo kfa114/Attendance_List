@@ -16,5 +16,6 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["AttendanceWorkspace"] },
   ],
+  "triggers": { "crons": ["0 * * * *"] },
   "observability": { "enabled": true },
 }

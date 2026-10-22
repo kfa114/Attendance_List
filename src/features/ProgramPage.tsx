@@ -47,6 +47,7 @@ export function ProgramPage({
   initialRole,
   back,
   toast,
+  onProgramChange,
 }: {
   programId: string;
   adminToken: string;
@@ -54,6 +55,7 @@ export function ProgramPage({
   initialRole: Role;
   back: () => void;
   toast: (s: string) => void;
+  onProgramChange?: () => Promise<void>;
 }) {
   const [role, setRole] = useState<Role>(initialRole);
   const [bundle, setBundle] = useState<Bundle>();
@@ -877,6 +879,7 @@ export function ProgramPage({
             setEditing(false);
             load();
             toast("프로그램 설정을 저장했습니다.");
+            onProgramChange?.();
           }}
         />
       )}

@@ -191,7 +191,7 @@ strong {
 }
 .sidebar-spacer {
   flex: 1;
-  min-height: 80px;
+  min-height: 24px;
 }
 .sidebar-guide {
   padding: 19px 16px;
@@ -2768,7 +2768,8 @@ td .small {
 
 /* Calendar and signature flows share clear, touch-sized controls. */
 .education-calendar {
-  max-width: 440px;
+  width: 100%;
+  max-width: none;
   padding: 14px;
   border: 1px solid var(--border, #dbe3ef);
   border-radius: 16px;
@@ -2989,4 +2990,54 @@ td .small {
 .saved-signature-action p {
   margin: 8px 0;
   line-height: 1.5;
+}
+
+.sidebar {
+  overflow-y: auto;
+}
+.sidebar-program-list {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0 10px;
+  padding: 0 0 0 12px;
+  border-left: 1px solid #dce7f8;
+  max-height: 32vh;
+  overflow-y: auto;
+  min-height: 0;
+}
+.sidebar-program-link {
+  display: block;
+  text-align: left;
+  width: 100%;
+  min-height: 40px;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #61718a;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.sidebar-program-link:hover,
+.sidebar-program-link[aria-current="page"] {
+  background: #edf4ff;
+  color: #2460dc;
+}
+.sidebar-program-list .small {
+  padding: 8px;
+}
+.sidebar-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+.sidebar-chevron.open {
+  transform: rotate(180deg);
+}
+.trash-expiry {
+  color: #ad5818;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 10px 22px 0;
 }

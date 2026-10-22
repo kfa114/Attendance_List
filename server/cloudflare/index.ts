@@ -2,7 +2,9 @@ import type {
   DurableObjectNamespace,
   DurableObjectState,
   Fetcher,
+  ScheduledController,
 } from "@cloudflare/workers-types";
+import { purgeExpiredPrograms } from "./trash";
 import { Service } from "../service";
 import { initialize, SqlRepository, SqlRuntime } from "./storage";
 import type { ApiRequest } from "../../src/domain/model";
@@ -31,6 +33,10 @@ export class AttendanceWorkspace {
     initialize(ctx.storage.sql);
   }
   async fetch(request: Request): Promise<Response> {
+    purgeExpiredPrograms(this.ctx.storage, Date.now());
+    // This path is reachable only through the private Durable Object binding.
+    if (new URL(request.url).pathname === "/__maintenance/trash")
+      return new Response("ok");
     if (!this.env.ADMIN_PASSPHRASE || this.env.ADMIN_PASSPHRASE.length < 16)
       return failure(
         "운영자 설정이 필요합니다. Cloudflare Secret에 ADMIN_PASSPHRASE를 16자 이상으로 등록해주세요.",
@@ -76,6 +82,17 @@ export class AttendanceWorkspace {
   }
 }
 export default {
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    const stub = env.WORKSPACE.get(
+      env.WORKSPACE.idFromName("attendance-workspace-v1"),
+    );
+    const response = await stub.fetch(
+      new Request("https://attendance.internal/__maintenance/trash", {
+        method: "POST",
+      }) as any,
+    );
+    if (!response.ok) throw new Error("Trash maintenance failed");
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/api" || url.pathname.startsWith("/api/")) {

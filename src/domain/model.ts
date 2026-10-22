@@ -9,6 +9,7 @@ export interface Program {
   dates: string[];
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string;
   revision: number;
   /** 이전 버전 저장 데이터 호환용. 현재 서명 방식에서는 집계에 사용하지 않음. */
   disabledIntervals?: { from: string; until?: string }[];
