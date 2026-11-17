@@ -3041,3 +3041,183 @@ td .small {
   line-height: 1.6;
   margin: 10px 22px 0;
 }
+
+/* Home: prioritize existing programs and keep secondary actions in a disclosure. */
+.home-heading {
+  margin-bottom: 18px;
+}
+.program-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-bottom: 24px;
+  color: #59687e;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.program-summary strong {
+  color: #263650;
+  margin-left: 4px;
+}
+.program-item {
+  position: relative;
+  overflow: visible;
+}
+.program-item:has(.program-menu-trigger[aria-expanded="true"]) {
+  z-index: 2;
+}
+.program-item .program-card {
+  border-radius: 13px;
+}
+.program-item .card-top {
+  justify-content: flex-start;
+  gap: 12px;
+  padding-right: 95px;
+  margin-bottom: 12px;
+}
+.program-item .card-body h3 {
+  font-size: 17px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.card-dates {
+  margin: 12px 0 0;
+  color: #344762;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.program-item .card-subtitle {
+  color: #66758a;
+  font-size: 12px;
+}
+.program-item .card-meta {
+  color: #59687e;
+  font-size: 13px;
+  margin: 14px 0;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.program-item .card-bottom {
+  font-size: 11px;
+}
+.program-menu {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+}
+.program-menu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: white;
+  color: #52627a;
+  font-size: 13px;
+}
+.program-menu-trigger:hover,
+.program-menu-trigger[aria-expanded="true"] {
+  background: #edf4ff;
+  color: #2859b8;
+}
+.program-menu-options {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 5px);
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid #d9e2ef;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 24px #172b4d24;
+}
+.program-menu-options button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 7px;
+  background: white;
+  text-align: left;
+  color: #344762;
+  font-size: 14px;
+}
+.program-menu-options button.danger-text {
+  color: #b62d40;
+}
+.program-menu-options button:hover {
+  background: #f0f5fe;
+}
+.program-menu button:focus-visible {
+  outline: 3px solid #497be1;
+  outline-offset: 2px;
+}
+.program-grid-list .program-card {
+  grid-template-columns: 75px minmax(0, 1fr) 185px;
+  padding-right: 120px;
+}
+.program-grid-list .card-top {
+  padding-right: 0;
+}
+.program-grid-list .card-top .badge {
+  display: inline-flex;
+  margin-top: 6px;
+}
+@media (max-width: 767px) {
+  .home-heading {
+    margin-bottom: 14px;
+  }
+  .home-heading p {
+    font-size: 13px;
+  }
+  .home-heading .create-btn {
+    margin-top: 14px;
+  }
+  .program-summary {
+    font-size: 12px;
+    gap: 4px 12px;
+    margin-bottom: 18px;
+  }
+  .program-list .list-title {
+    margin-bottom: 12px;
+  }
+  .program-item .program-card {
+    padding: 16px 16px 0;
+  }
+  .program-item .card-top {
+    margin-bottom: 10px;
+  }
+  .program-item .program-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .program-item .card-bottom {
+    padding: 12px 0;
+  }
+  .program-grid-list .program-card {
+    display: flex;
+    gap: 0;
+  }
+  .program-grid-list .card-top {
+    display: flex;
+    padding-right: 95px;
+  }
+  .program-grid-list .card-top .badge {
+    margin: 0;
+  }
+  .program-grid-list .card-bottom {
+    flex-direction: row;
+    align-items: center;
+    width: 100%;
+  }
+}

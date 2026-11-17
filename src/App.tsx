@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  Archive,
-  ArchiveRestore,
   Trash2,
   ArrowDownUp,
   ArrowRight,
@@ -9,7 +7,6 @@ import {
   ChevronDown,
   ClipboardCheck,
   FileSpreadsheet,
-  FolderOpen,
   HelpCircle,
   LayoutGrid,
   List,
@@ -23,16 +20,23 @@ import {
   Users,
   X,
   CalendarDays,
-  PenLine,
   LoaderCircle,
 } from "lucide-react";
 import type { ProgramSummary, Program, Role } from "./domain/model";
 import { trashDeadline } from "./domain/trash";
 import { bootstrap, isGas, isLocalPreview, login, request } from "./api";
 import { Badge, Empty, Modal, Notice, Spinner } from "./components/ui";
+import { ProgramActions } from "./components/ProgramActions";
 import { ProgramEditor } from "./features/ProgramEditor";
 import { MobileSigning } from "./features/MobileSigning";
 import { ProgramPage } from "./features/ProgramPage";
+function educationPeriod(dates: string[]) {
+  const sorted = [...dates].sort();
+  if (!sorted.length) return "교육일 미설정";
+  const first = sorted[0].replaceAll("-", ".");
+  const last = sorted.at(-1)!.replaceAll("-", ".");
+  return first === last ? first : `${first} ~ ${last}`;
+}
 function route(hash = location.hash) {
   const params = new URLSearchParams(hash.replace(/^#/, ""));
   return {
@@ -316,336 +320,291 @@ export default function App() {
             />
           ) : (
             <>
-              <section className="page-heading">
+              <section className="page-heading home-heading">
                 <div>
-                  <div className="eyebrow">YOUR PROGRAMS, ALL IN ONE PLACE</div>
                   <h1>프로그램 명단</h1>
-                  <p>새로운 만남의 시작부터 출석까지, 한곳에서 관리하세요.</p>
+                  <p>프로그램을 선택해 명단과 출결을 관리하세요.</p>
                 </div>
-                <button
-                  className="btn primary create-btn"
-                  onClick={() => setEditor(true)}
-                >
-                  <Plus size={18} />새 명단 만들기
-                </button>
-              </section>
-              <section className="welcome-banner">
-                <div className="welcome-copy">
-                  <span className="banner-kicker">
-                    <Sparkles size={14} />더 가벼운 프로그램 관리
-                  </span>
-                  <h2>
-                    명단을 만들고,
-                    <br className="mobile-only" /> 바로 시작하세요.
-                  </h2>
-                  <p>
-                    직접 입력하거나 엑셀 파일을 가져오세요.
-                    <br />
-                    오전·오후 서명은 필요할 때만 켤 수 있어요.
-                  </p>
-                  <button onClick={() => setEditor(true)}>
-                    첫 단계, 명단 만들기
-                    <ArrowRight size={16} />
+                {programs.length > 0 && (
+                  <button
+                    className="btn primary create-btn"
+                    onClick={() => setEditor(true)}
+                  >
+                    <Plus size={18} />새 명단 만들기
                   </button>
-                </div>
-                <div className="banner-art" aria-hidden="true">
-                  <div className="art-orbit orbit1" />
-                  <div className="art-orbit orbit2" />
-                  <div className="art-sheet sheet-back" />
-                  <div className="art-sheet">
-                    <div className="art-sheet-header">
-                      <ClipboardCheck size={21} />
-                      <span>PROGRAM LIST</span>
-                      <i />
-                    </div>
-                    <div className="art-line long" />
-                    <div className="art-line" />
-                    {[1, 2, 3].map((i) => (
-                      <div className="art-person" key={i}>
-                        <span>
-                          <Check size={12} />
-                        </span>
-                        <i />
+                )}
+              </section>
+              {!loading && !error && programs.length === 0 && (
+                <section className="welcome-banner">
+                  <div className="welcome-copy">
+                    <span className="banner-kicker">
+                      <Sparkles size={14} />더 가벼운 프로그램 관리
+                    </span>
+                    <h2>
+                      명단을 만들고,
+                      <br className="mobile-only" /> 바로 시작하세요.
+                    </h2>
+                    <p>
+                      직접 입력하거나 엑셀 파일을 가져오세요.
+                      <br />
+                      오전·오후 서명은 필요할 때만 켤 수 있어요.
+                    </p>
+                    <button onClick={() => setEditor(true)}>
+                      첫 단계, 명단 만들기
+                      <ArrowRight size={16} />
+                    </button>
+                  </div>
+                  <div className="banner-art" aria-hidden="true">
+                    <div className="art-orbit orbit1" />
+                    <div className="art-orbit orbit2" />
+                    <div className="art-sheet sheet-back" />
+                    <div className="art-sheet">
+                      <div className="art-sheet-header">
+                        <ClipboardCheck size={21} />
+                        <span>PROGRAM LIST</span>
                         <i />
                       </div>
-                    ))}
+                      <div className="art-line long" />
+                      <div className="art-line" />
+                      {[1, 2, 3].map((i) => (
+                        <div className="art-person" key={i}>
+                          <span>
+                            <Check size={12} />
+                          </span>
+                          <i />
+                          <i />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="art-float">
+                      <span>
+                        <Check size={17} />
+                      </span>
+                      <div>
+                        차곡차곡, 한눈에<strong>우리 프로그램 명단</strong>
+                      </div>
+                    </div>
                   </div>
-                  <div className="art-float">
-                    <span>
-                      <Check size={17} />
+                </section>
+              )}
+              {programs.length > 0 && (
+                <div className="program-summary" aria-label="프로그램 요약">
+                  <span>
+                    전체 프로그램 <strong>{listed.length}개</strong>
+                  </span>
+                  <span>
+                    참여자 <strong>{totalPeople}명</strong>
+                  </span>
+                  <span>
+                    오전·오후 구분{" "}
+                    <strong>
+                      {active.filter((p) => p.signatureEnabled).length}개
+                    </strong>
+                  </span>
+                </div>
+              )}
+              {(programs.length > 0 || loading || error) && (
+                <section className="program-list">
+                  <div className="section-line list-title">
+                    <h2>
+                      내 프로그램 <span className="count">{listed.length}</span>
+                    </h2>
+                    <span className="small muted">
+                      {filter === "deleted"
+                        ? "휴지통 이동 후 7일이 지나면 명단·서명·PDF가 영구 삭제됩니다."
+                        : "프로그램을 선택해 명단과 출결을 관리하세요."}
                     </span>
-                    <div>
-                      차곡차곡, 한눈에<strong>우리 프로그램 명단</strong>
-                    </div>
                   </div>
-                </div>
-              </section>
-              <section className="overview-stats">
-                <div>
-                  <span className="stat-icon blue">
-                    <FolderOpen size={21} />
-                  </span>
-                  <div>
-                    <span>전체 프로그램</span>
-                    <strong>
-                      {listed.length}
-                      <small>개</small>
-                    </strong>
-                  </div>
-                </div>
-                <div>
-                  <span className="stat-icon teal">
-                    <Users size={21} />
-                  </span>
-                  <div>
-                    <span>등록된 참여자</span>
-                    <strong>
-                      {totalPeople}
-                      <small>명</small>
-                    </strong>
-                  </div>
-                </div>
-                <div>
-                  <span className="stat-icon violet">
-                    <PenLine size={21} />
-                  </span>
-                  <div>
-                    <span>오전·오후 구분 프로그램</span>
-                    <strong>
-                      {active.filter((p) => p.signatureEnabled).length}
-                      <small>개</small>
-                    </strong>
-                  </div>
-                </div>
-              </section>
-              <section className="program-list">
-                <div className="section-line list-title">
-                  <h2>
-                    내 프로그램 <span className="count">{listed.length}</span>
-                  </h2>
-                  <span className="small muted">
-                    {filter === "deleted"
-                      ? "휴지통 이동 후 7일이 지나면 명단·서명·PDF가 영구 삭제됩니다."
-                      : "프로그램을 선택해 명단과 출결을 관리하세요."}
-                  </span>
-                </div>
-                <div className="list-toolbar">
-                  <div className="filter-tabs">
-                    <button
-                      className={filter === "all" ? "active" : ""}
-                      onClick={() => setFilter("all")}
-                    >
-                      전체 <span>{listed.length}</span>
-                    </button>
-                    <button
-                      className={filter === "active" ? "active" : ""}
-                      onClick={() => setFilter("active")}
-                    >
-                      운영 중 <span>{active.length}</span>
-                    </button>
-                    <button
-                      className={filter === "archived" ? "active" : ""}
-                      onClick={() => setFilter("archived")}
-                    >
-                      보관
-                    </button>
-                    <button
-                      className={filter === "deleted" ? "active" : ""}
-                      onClick={() => setFilter("deleted")}
-                    >
-                      휴지통
-                    </button>
-                  </div>
-                  <div className="toolbar-controls">
-                    <label className="search">
-                      <Search size={17} />
-                      <input
-                        aria-label="프로그램 검색"
-                        placeholder="프로그램명 검색"
-                        value={query}
-                        onChange={(e) => setQuery(e.target.value)}
-                      />
-                    </label>
-                    <select
-                      aria-label="프로그램 정렬"
-                      value={sort}
-                      onChange={(e) => setSort(e.target.value)}
-                    >
-                      <option value="new">최신순</option>
-                      <option value="name">이름순</option>
-                    </select>
-                    <div className="view-toggle">
+                  <div className="list-toolbar">
+                    <div className="filter-tabs">
                       <button
-                        className={layout === "grid" ? "active" : ""}
-                        onClick={() => setLayout("grid")}
-                        aria-label="카드 보기"
+                        className={filter === "all" ? "active" : ""}
+                        onClick={() => setFilter("all")}
                       >
-                        <LayoutGrid size={17} />
+                        전체 <span>{listed.length}</span>
                       </button>
                       <button
-                        className={layout === "list" ? "active" : ""}
-                        onClick={() => setLayout("list")}
-                        aria-label="목록 보기"
+                        className={filter === "active" ? "active" : ""}
+                        onClick={() => setFilter("active")}
                       >
-                        <List size={18} />
+                        운영 중 <span>{active.length}</span>
+                      </button>
+                      <button
+                        className={filter === "archived" ? "active" : ""}
+                        onClick={() => setFilter("archived")}
+                      >
+                        보관
+                      </button>
+                      <button
+                        className={filter === "deleted" ? "active" : ""}
+                        onClick={() => setFilter("deleted")}
+                      >
+                        휴지통
                       </button>
                     </div>
-                  </div>
-                </div>
-                {error && <Notice error>{error}</Notice>}
-                {loading ? (
-                  <Spinner />
-                ) : !visible.length ? (
-                  <Empty
-                    title={
-                      query || filter !== "all"
-                        ? "조건에 맞는 프로그램이 없어요"
-                        : "아직 등록된 프로그램이 없어요"
-                    }
-                    description={
-                      query || filter !== "all"
-                        ? "다른 검색어나 필터를 선택해주세요."
-                        : "첫 명단을 만들면 이곳에 프로그램이 모여요."
-                    }
-                    action={
-                      query || filter !== "all"
-                        ? undefined
-                        : () => setEditor(true)
-                    }
-                  />
-                ) : (
-                  <div
-                    className={`program-grid ${layout === "list" ? "program-grid-list" : ""}`}
-                  >
-                    {visible.map((p) => (
-                      <article className="program-item" key={p.id}>
+                    <div className="toolbar-controls">
+                      <label className="search">
+                        <Search size={17} />
+                        <input
+                          aria-label="프로그램 검색"
+                          placeholder="프로그램명 검색"
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                        />
+                      </label>
+                      <select
+                        aria-label="프로그램 정렬"
+                        value={sort}
+                        onChange={(e) => setSort(e.target.value)}
+                      >
+                        <option value="new">최신순</option>
+                        <option value="name">이름순</option>
+                      </select>
+                      <div className="view-toggle">
                         <button
-                          className="program-card"
-                          aria-label={`${p.title} 명단 열기`}
-                          disabled={p.status === "deleted"}
-                          onClick={() => open(p)}
+                          className={layout === "grid" ? "active" : ""}
+                          onClick={() => setLayout("grid")}
+                          aria-label="카드 보기"
                         >
-                          <div className="card-top">
-                            <span
-                              className={`program-icon ${p.signatureEnabled ? "" : "neutral"}`}
-                            >
-                              {p.signatureEnabled ? (
-                                <ClipboardCheck size={25} strokeWidth={1.7} />
-                              ) : (
-                                <Users size={25} strokeWidth={1.7} />
-                              )}
-                            </span>
-                            <Badge
-                              color={p.status === "active" ? "green" : "gray"}
-                            >
-                              {p.status === "active"
-                                ? "운영 중"
-                                : p.status === "deleted"
-                                  ? "휴지통"
-                                  : "보관"}
-                            </Badge>
-                          </div>
-                          <div className="card-body">
-                            <h3>{p.title}</h3>
-                            <span className="card-subtitle">
-                              {p.signatureEnabled
-                                ? "오전·오후 서명 사용"
-                                : "기본 서명 사용"}
-                            </span>
-                            <div className="card-meta">
+                          <LayoutGrid size={17} />
+                        </button>
+                        <button
+                          className={layout === "list" ? "active" : ""}
+                          onClick={() => setLayout("list")}
+                          aria-label="목록 보기"
+                        >
+                          <List size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  {error && <Notice error>{error}</Notice>}
+                  {loading ? (
+                    <Spinner />
+                  ) : programs.length === 0 &&
+                    !error ? null : !visible.length ? (
+                    <Empty
+                      title={
+                        query
+                          ? "검색 결과가 없어요"
+                          : filter === "deleted"
+                            ? "휴지통이 비어 있어요"
+                            : filter === "archived"
+                              ? "보관한 프로그램이 없어요"
+                              : filter === "active"
+                                ? "운영 중인 프로그램이 없어요"
+                                : "표시할 프로그램이 없어요"
+                      }
+                      description={
+                        query
+                          ? "다른 프로그램명으로 검색해주세요."
+                          : filter === "deleted"
+                            ? "삭제한 프로그램은 이곳에서 7일 동안 복원할 수 있어요."
+                            : filter === "archived"
+                              ? "운영이 끝난 프로그램을 보관하면 이곳에 표시돼요."
+                              : "새 명단을 만들거나 다른 필터를 선택해주세요."
+                      }
+                    />
+                  ) : (
+                    <div
+                      className={`program-grid ${layout === "list" ? "program-grid-list" : ""}`}
+                    >
+                      {visible.map((p) => (
+                        <article className="program-item" key={p.id}>
+                          <button
+                            className="program-card"
+                            aria-label={`${p.title} 명단 열기`}
+                            disabled={p.status === "deleted"}
+                            onClick={() => open(p)}
+                          >
+                            <div className="card-top">
+                              <span
+                                className={`program-icon ${p.signatureEnabled ? "" : "neutral"}`}
+                              >
+                                {p.signatureEnabled ? (
+                                  <ClipboardCheck size={25} strokeWidth={1.7} />
+                                ) : (
+                                  <Users size={25} strokeWidth={1.7} />
+                                )}
+                              </span>
+                              <Badge
+                                color={p.status === "active" ? "green" : "gray"}
+                              >
+                                {p.status === "active"
+                                  ? "운영 중"
+                                  : p.status === "deleted"
+                                    ? "휴지통"
+                                    : "보관"}
+                              </Badge>
+                            </div>
+                            <div className="card-body">
+                              <h3 title={p.title}>{p.title}</h3>
+                              <p className="card-dates">
+                                {educationPeriod(p.dates)}
+                              </p>
+                              <span className="card-subtitle">
+                                {p.signatureEnabled
+                                  ? "오전·오후 서명 사용"
+                                  : "기본 서명 사용"}
+                              </span>
+                              <div className="card-meta">
+                                <span>
+                                  <Users size={15} />
+                                  {p.participantCount}명
+                                </span>
+                                <span>
+                                  <CalendarDays size={15} />
+                                  교육일 {p.dates.length}일
+                                </span>
+                              </div>
+                            </div>
+                            <div className="card-bottom">
                               <span>
-                                <Users size={15} />
-                                {p.participantCount}명
+                                {new Date(p.createdAt).toLocaleDateString(
+                                  "ko-KR",
+                                  {
+                                    timeZone: "Asia/Seoul",
+                                  },
+                                )}{" "}
+                                생성
                               </span>
                               <span>
-                                <CalendarDays size={15} />
-                                {p.dates.length
-                                  ? `교육일 ${p.dates.length}일`
-                                  : "교육일 미설정"}
+                                명단 열기
+                                <ArrowRight size={15} />
                               </span>
                             </div>
-                          </div>
-                          <div className="card-bottom">
-                            <span>
-                              {new Date(p.createdAt).toLocaleDateString(
-                                "ko-KR",
-                                {
-                                  timeZone: "Asia/Seoul",
-                                },
-                              )}{" "}
-                              생성
-                            </span>
-                            <span>
-                              명단 열기
-                              <ArrowRight size={15} />
-                            </span>
-                          </div>
-                        </button>
-                        {p.status === "deleted" &&
-                          trashDeadline(p) !== undefined && (
-                            <p className="trash-expiry">
-                              영구 삭제 예정:{" "}
-                              {new Date(trashDeadline(p)!).toLocaleString(
-                                "ko-KR",
-                                { timeZone: "Asia/Seoul" },
-                              )}
-                            </p>
-                          )}
-                        <div
-                          className="program-actions"
-                          aria-label={`${p.title} 관리`}
-                        >
-                          <button
-                            className="btn secondary compact"
-                            disabled={statusBusy}
-                            aria-label={`${p.title} ${p.status === "active" ? "보관" : p.status === "deleted" ? "복원" : "운영 재개"}`}
-                            onClick={() =>
+                          </button>
+                          {p.status === "deleted" &&
+                            trashDeadline(p) !== undefined && (
+                              <p className="trash-expiry">
+                                영구 삭제 예정:{" "}
+                                {new Date(trashDeadline(p)!).toLocaleString(
+                                  "ko-KR",
+                                  { timeZone: "Asia/Seoul" },
+                                )}
+                              </p>
+                            )}
+                          <ProgramActions
+                            title={p.title}
+                            status={p.status}
+                            busy={statusBusy}
+                            onStatus={() =>
                               changeStatus(
                                 p,
                                 p.status === "active" ? "archived" : "active",
                               )
                             }
-                          >
-                            {p.status === "active" ? (
-                              <Archive size={16} />
-                            ) : (
-                              <ArchiveRestore size={16} />
-                            )}
-                            {p.status === "active"
-                              ? "보관"
-                              : p.status === "deleted"
-                                ? "복원"
-                                : "운영 재개"}
-                          </button>
-                          {p.status !== "deleted" && (
-                            <button
-                              className="btn secondary compact danger-text"
-                              disabled={statusBusy}
-                              aria-label={`${p.title} 삭제`}
-                              onClick={() => {
-                                setStatusError("");
-                                setDeleteTarget(p);
-                              }}
-                            >
-                              <Trash2 size={16} /> 삭제
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    ))}
-                    <button
-                      className="new-program-card"
-                      onClick={() => setEditor(true)}
-                    >
-                      <span>
-                        <Plus size={23} />
-                      </span>
-                      <strong>새 프로그램 시작하기</strong>
-                      <small>새로운 명단을 만들어보세요.</small>
-                    </button>
-                  </div>
-                )}
-              </section>
+                            onDelete={() => {
+                              setStatusError("");
+                              setDeleteTarget(p);
+                            }}
+                          />
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
               <footer className="page-footer">
                 <ShieldCheck size={14} />
                 프로그램별 명단과 기록은 독립적으로 관리돼요.
