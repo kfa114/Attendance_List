@@ -3378,3 +3378,218 @@ td .small {
     color: #52627a;
   }
 }
+
+/* Field signing: compact context, persistent QR, and a large direct-signing list. */
+.field-workspace .program-title-row {
+  margin-bottom: 12px;
+}
+.field-workspace .program-title-row .eyebrow {
+  display: none;
+}
+.field-workspace .program-title-row h1 {
+  font-size: 24px;
+  line-height: 1.4;
+}
+.field-workspace .role-tabs {
+  margin-bottom: 18px;
+}
+.field-panel {
+  padding: 20px;
+}
+.field-panel .field-heading {
+  margin-bottom: 12px;
+}
+.field-panel .field-heading h2 {
+  font-size: 20px;
+  margin: 0;
+}
+.field-panel .field-heading .badge {
+  font-size: 14px;
+}
+.field-panel .slot-controls {
+  margin: 0 0 16px;
+}
+.field-panel .slot-controls > select {
+  min-height: 44px;
+  font-size: 16px;
+}
+.field-panel .slot-controls button {
+  min-height: 44px;
+  font-size: 16px;
+}
+.field-panel .slot-controls > span {
+  font-size: 14px;
+  color: #52627a;
+}
+.field-columns {
+  display: grid;
+  grid-template-columns: minmax(280px, 2fr) minmax(0, 3fr);
+  gap: 24px;
+  align-items: start;
+}
+.field-qr,
+.field-direct {
+  min-width: 0;
+}
+.field-mode-switch {
+  display: none;
+}
+.field-panel .signing-qr {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  margin: 0;
+  border-radius: 14px;
+  align-items: stretch;
+}
+.field-panel .qr-copy h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 19px;
+}
+.field-panel .qr-copy p {
+  font-size: 15px;
+  color: #344762;
+  line-height: 1.6;
+  margin: 10px 0;
+}
+.field-panel .qr-copy > strong {
+  font-size: 18px;
+  margin: 10px 0;
+}
+.field-panel .qr-copy .btn,
+.field-panel .qr-display .btn {
+  min-height: 44px;
+  font-size: 16px;
+  width: 100%;
+}
+.field-panel .qr-display {
+  flex: none;
+  width: 100%;
+  max-width: 340px;
+  margin: 0 auto;
+}
+.field-panel .qr-display img {
+  max-width: 100%;
+}
+.field-direct h3 {
+  margin-bottom: 12px;
+  font-size: 19px;
+}
+.field-direct .search {
+  width: 100%;
+  margin-bottom: 16px;
+}
+.field-direct .search input {
+  min-height: 44px;
+  font-size: 16px;
+}
+.field-direct .name-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 0;
+}
+.field-direct .name-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  height: auto;
+  padding: 14px;
+  text-align: center;
+}
+.field-direct .name-card strong {
+  font-size: 28px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.field-direct .name-card:focus-visible,
+.field-mode-switch button:focus-visible {
+  outline: 3px solid #497be1;
+  outline-offset: 2px;
+}
+@media (max-width: 1023px) {
+  .field-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .field-mode-switch {
+    display: flex;
+    gap: 8px;
+    margin: 16px 0;
+  }
+  .field-mode-switch button {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px;
+    border: 1px solid #d9e2ef;
+    border-radius: 9px;
+    background: #fff;
+    color: #344762;
+    font-size: 16px;
+  }
+  .field-mode-switch button[aria-pressed="true"] {
+    background: #edf3ff;
+    border: 2px solid #315fc0;
+    color: #244ea2;
+    font-weight: 700;
+  }
+  .field-columns[data-mode="qr"] .field-direct,
+  .field-columns[data-mode="direct"] .field-qr {
+    display: none;
+  }
+}
+@media (max-width: 767px) {
+  .field-workspace .back-link {
+    margin-bottom: 12px;
+  }
+  .field-workspace .program-title-row {
+    margin-bottom: 8px;
+  }
+  .field-workspace .program-title-row h1 {
+    font-size: 22px;
+  }
+  .field-workspace .role-tabs {
+    margin: 12px 0 16px;
+  }
+  .field-panel {
+    padding: 16px;
+  }
+  .field-panel > .field-heading {
+    display: flex;
+    gap: 8px;
+  }
+  .field-panel > .field-heading > .badge {
+    margin: 0;
+  }
+  .field-panel .signing-qr {
+    padding: 16px;
+  }
+  .field-direct .name-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+  .field-direct .name-card {
+    min-height: 64px;
+    padding: 12px;
+  }
+}
+@media (max-width: 767px) {
+  .field-workspace .program-title-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .field-workspace .program-title-row > div:first-child {
+    flex: 1;
+  }
+  .field-workspace .program-title-row > .inline {
+    position: static;
+    flex-shrink: 0;
+  }
+}
+.field-panel > .notice {
+  font-size: 15px;
+  line-height: 1.6;
+}

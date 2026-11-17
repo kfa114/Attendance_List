@@ -58,6 +58,7 @@ export function ProgramPage({
   onProgramChange?: () => Promise<void>;
 }) {
   const [role, setRole] = useState<Role>(initialRole);
+  const [fieldMode, setFieldMode] = useState<"qr" | "direct">("qr");
   const [bundle, setBundle] = useState<Bundle>();
   const [title, setTitle] = useState("프로그램");
   const [publicEnabled, setPublicEnabled] = useState(true);
@@ -270,7 +271,9 @@ export function ProgramPage({
       ),
   );
   return (
-    <div className="program-page">
+    <div
+      className={`program-page ${role === "tablet" ? "field-workspace" : ""}`}
+    >
       <button className="back-link" onClick={back}>
         <ArrowLeft size={16} />
         {adminToken ? "명단 목록으로" : "처음으로"}
@@ -317,7 +320,7 @@ export function ProgramPage({
         {(
           [
             { id: "student", label: "교육생", icon: Users },
-            { id: "tablet", label: "태블릿", icon: Monitor },
+            { id: "tablet", label: "현장 서명", icon: Monitor },
             { id: "admin", label: "강사·관리자", icon: ShieldCheck },
           ] as const
         ).map((t) => (
@@ -353,14 +356,9 @@ export function ProgramPage({
           <Spinner />
         )
       ) : role === "tablet" ? (
-        <section className="tablet-panel">
-          <div className="section-line">
-            <div>
-              <h2>휴대폰 또는 태블릿으로 서명해주세요</h2>
-              <p className="muted">
-                QR로 각자 서명하거나, 아래에서 이름을 선택해주세요.
-              </p>
-            </div>
+        <section className="tablet-panel field-panel">
+          <div className="section-line field-heading">
+            <h2>서명 받기</h2>
             <Badge>
               {slotSignatures.length} / {bundle.participants.length}명 완료
             </Badge>
@@ -373,58 +371,78 @@ export function ProgramPage({
           ) : (
             <>
               {slotControls}
-              <SigningQr
-                programId={programId}
-                date={date}
-                period={period}
-                token={token}
-                enabled={Boolean(canWrite)}
-              />
-              <h3>태블릿에서 직접 서명하기</h3>
               {!canWrite && (
                 <Notice>
-                  {date !== koreaDate(now)
-                    ? "오늘 교육일의 서명만 받을 수 있어요."
-                    : bundle.program.status === "archived"
-                      ? "보관된 프로그램이에요."
+                  {bundle.program.status === "archived"
+                    ? "보관된 프로그램이에요. 관리자에게 운영 재개를 요청해주세요."
+                    : date !== koreaDate(now)
+                      ? "선택한 날짜는 오늘 교육일이 아니에요. 오늘 교육일을 선택해주세요."
                       : "서명이 마감됐어요. 미서명자는 강사에게 문의해주세요."}
                 </Notice>
               )}
-              <label className="search">
-                <Search size={18} />
-                <input
-                  aria-label="서명할 이름 검색"
-                  placeholder="내 이름 찾기"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-              <div className="name-grid">
-                {shown
-                  .filter((r) => !isSigned(r.id))
-                  .map((r) => (
-                    <button
-                      className="name-card"
-                      key={r.id}
-                      disabled={!canWrite}
-                      onClick={() => setSigner(r)}
-                    >
-                      <span>{String(r.order).padStart(2, "0")}</span>
-                      <strong>{r.name}</strong>
-                      <span className="sign-arrow">↗</span>
-                    </button>
-                  ))}
+              <div className="field-mode-switch" aria-label="서명 방식 선택">
+                <button
+                  aria-pressed={fieldMode === "qr"}
+                  onClick={() => setFieldMode("qr")}
+                >
+                  휴대폰 QR
+                </button>
+                <button
+                  aria-pressed={fieldMode === "direct"}
+                  onClick={() => setFieldMode("direct")}
+                >
+                  직접 서명
+                </button>
               </div>
-              {!shown.filter((r) => !isSigned(r.id)).length && (
-                <Empty
-                  title={query ? "이름을 찾을 수 없어요" : "모두 서명했어요"}
-                  description={
-                    query
-                      ? "이미 서명했거나 등록되지 않은 이름이에요."
-                      : "선택한 교육일의 서명이 완료됐어요."
-                  }
-                />
-              )}
+              <div className="field-columns" data-mode={fieldMode}>
+                <div className="field-qr">
+                  <SigningQr
+                    programId={programId}
+                    date={date}
+                    period={period}
+                    token={token}
+                    enabled={Boolean(canWrite)}
+                  />
+                </div>
+                <section className="field-direct" aria-label="직접 서명">
+                  <h3>이름을 선택해 서명해주세요</h3>
+                  <label className="search">
+                    <Search size={18} />
+                    <input
+                      aria-label="서명할 이름 검색"
+                      placeholder="내 이름 찾기"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                    />
+                  </label>
+                  <div className="name-grid">
+                    {shown
+                      .filter((r) => !isSigned(r.id))
+                      .map((r) => (
+                        <button
+                          className="name-card"
+                          key={r.id}
+                          disabled={!canWrite}
+                          onClick={() => setSigner(r)}
+                        >
+                          <strong>{r.name}</strong>
+                        </button>
+                      ))}
+                  </div>
+                  {!shown.filter((r) => !isSigned(r.id)).length && (
+                    <Empty
+                      title={
+                        query ? "이름을 찾을 수 없어요" : "모두 서명했어요"
+                      }
+                      description={
+                        query
+                          ? "이미 서명했거나 등록되지 않은 이름이에요."
+                          : "선택한 교육일의 서명이 완료됐어요."
+                      }
+                    />
+                  )}
+                </section>
+              </div>
             </>
           )}
         </section>
@@ -1020,12 +1038,12 @@ export function ProgramPage({
         <Modal title="프로그램 전용 링크" close={() => setLinks(undefined)}>
           <div className="modal-body">
             <Notice>
-              교육생에게는 교육생 링크만 전달해주세요. 태블릿 링크는 6시간 동안
-              현장 서명에 사용할 수 있어요.
+              교육생에게는 교육생 링크만 전달해주세요. 현장 서명 링크는 6시간
+              동안 현장 서명에 사용할 수 있어요.
             </Notice>
             {[
               ["교육생 링크", links.student],
-              ["현장 태블릿 링크", links.tablet],
+              ["현장 서명 링크", links.tablet],
             ].map(([label, url]) => (
               <label className="field" key={label}>
                 {label}
@@ -1049,7 +1067,7 @@ export function ProgramPage({
               </label>
             ))}
             <p className="small muted">
-              태블릿 링크는 이름과 서명 기능을 포함하므로 현장 기기에서만
+              현장 서명 링크는 이름과 서명 기능을 포함하므로 현장 기기에서만
               사용해주세요.
             </p>
           </div>

@@ -64,28 +64,23 @@ export function SigningQr({
       if (current === generation.current) setBusy(false);
     }
   }
-  const visible = enabled && qr && qr.expiresAt > Date.now();
+  const usableUntil = qr
+    ? Math.min(
+        qr.expiresAt,
+        Date.parse(`${date}T${period === "am" ? "13" : "18"}:00:00+09:00`),
+      )
+    : 0;
+  const visible = enabled && qr && usableUntil > Date.now();
   return (
     <section className="signing-qr">
       <div className="qr-copy">
-        <QrCode size={28} />
-        <h2>
-          줄 서지 않고,
-          <br />내 휴대폰으로 서명
-        </h2>
-        <p>
-          휴대폰 카메라로 QR을 찍어주세요.
-          <br />
-          본인 이름 선택 → 서명 → 작성 완료
-        </p>
+        <h3>
+          <QrCode size={22} /> 휴대폰 QR 서명
+        </h3>
+        {!visible && <p>QR 스캔 → 이름 선택 → 서명 완료</p>}
         <strong>
           {date && formatDate(date)} · {PERIOD_LABEL[period]}
         </strong>
-        {visible && (
-          <p className="small muted">
-            오늘 서명 마감 또는 링크 만료 전까지 사용할 수 있어요.
-          </p>
-        )}
         {!visible && (
           <button
             className="btn primary"
@@ -106,6 +101,14 @@ export function SigningQr({
             width={300}
             height={300}
           />
+          <p className="small muted">
+            {new Date(usableUntil).toLocaleTimeString("ko-KR", {
+              timeZone: "Asia/Seoul",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+            까지 사용 가능
+          </p>
           <button
             className="btn secondary"
             onClick={async () => {
