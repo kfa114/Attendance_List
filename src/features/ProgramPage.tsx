@@ -545,7 +545,7 @@ export function ProgramPage({
               {slotControls}
               {adminTab === "attendance" ? (
                 <>
-                  <div className="stats three">
+                  <div className="stats three attendance-summary">
                     <div className="stat">
                       <span>본인 서명 완료</span>
                       <strong>
@@ -592,34 +592,54 @@ export function ProgramPage({
                       <Badge
                         color={isClosed(date, period, now) ? "gray" : "blue"}
                       >
-                        {isClosed(date, period, now)
-                          ? "서명 마감"
-                          : "서명 가능 시간"}
+                        {bundle.program.status === "archived"
+                          ? "보관됨 · 수정 불가"
+                          : date > koreaDate(now)
+                            ? "교육일 전"
+                            : isClosed(date, period, now)
+                              ? "서명 마감"
+                              : "서명 가능 시간"}
                       </Badge>
                     </div>
                     <SearchBox query={query} set={setQuery} />
-                    <div className="table-wrap">
-                      <table>
-                        <thead>
-                          <tr>
-                            <th>이름</th>
-                            <th>결석 신고</th>
-                            <th>출결 상태</th>
-                            <th>출결 수정</th>
+                    <div className="table-wrap attendance-wrap">
+                      <table
+                        className="attendance-table"
+                        role="table"
+                        aria-label="참여자별 출결"
+                      >
+                        <thead role="rowgroup">
+                          <tr role="row">
+                            <th scope="col" role="columnheader">
+                              이름
+                            </th>
+                            <th scope="col" role="columnheader">
+                              결석 신고
+                            </th>
+                            <th scope="col" role="columnheader">
+                              출결 상태
+                            </th>
+                            <th scope="col" role="columnheader">
+                              출결 수정
+                            </th>
                           </tr>
                         </thead>
-                        <tbody>
+                        <tbody role="rowgroup">
                           {shown.map((r) => {
                             const status = stateFor(bundle, r.id, date, period);
                             return (
-                              <tr key={r.id}>
-                                <td>
+                              <tr key={r.id} role="row">
+                                <td className="attendance-person" role="cell">
                                   <strong>{r.name}</strong>
                                   <small className="cell-note">
                                     {displayPhone(r.phone)}
                                   </small>
                                 </td>
-                                <td>
+                                <td
+                                  className="attendance-absence"
+                                  role="cell"
+                                  data-label="결석 신고"
+                                >
                                   {bundle.absences.some(
                                     (a) =>
                                       a.participantId === r.id &&
@@ -629,10 +649,14 @@ export function ProgramPage({
                                   ) ? (
                                     <Badge color="orange">결석 신고</Badge>
                                   ) : (
-                                    <span className="muted">출석 예정</span>
+                                    <span className="muted">신고 없음</span>
                                   )}
                                 </td>
-                                <td>
+                                <td
+                                  className="attendance-state"
+                                  role="cell"
+                                  data-label="현재 출결"
+                                >
                                   <Badge
                                     color={
                                       isSigned(r.id)
@@ -641,13 +665,15 @@ export function ProgramPage({
                                           ? "blue"
                                           : status === "강사 판단 결석"
                                             ? "orange"
-                                            : "gray"
+                                            : status === "강사 판단 대기"
+                                              ? "orange"
+                                              : "gray"
                                     }
                                   >
                                     {status}
                                   </Badge>
                                 </td>
-                                <td>
+                                <td className="attendance-actions" role="cell">
                                   {isSigned(r.id) ? (
                                     <button
                                       className="btn secondary compact danger-text"
@@ -675,6 +701,10 @@ export function ProgramPage({
                                     <div className="inline">
                                       <button
                                         className="btn soft compact"
+                                        aria-label={`${r.name} 출석 처리`}
+                                        aria-pressed={
+                                          status === "강사 판단 출석"
+                                        }
                                         disabled={
                                           busy ||
                                           date > koreaDate(now) ||
@@ -691,6 +721,10 @@ export function ProgramPage({
                                       </button>
                                       <button
                                         className="btn secondary compact"
+                                        aria-label={`${r.name} 결석 처리`}
+                                        aria-pressed={
+                                          status === "강사 판단 결석"
+                                        }
                                         disabled={
                                           busy ||
                                           date > koreaDate(now) ||
@@ -714,7 +748,13 @@ export function ProgramPage({
                         </tbody>
                       </table>
                     </div>
-                    <div className="small muted footnote">
+                    {!shown.length && (
+                      <Empty
+                        title="참여자를 찾을 수 없어요"
+                        description="다른 이름이나 연락처로 검색해주세요."
+                      />
+                    )}
+                    <div className="small muted footnote attendance-footnote">
                       강사 판단은 출결 상태에 기록되며 서명 기준 출석률에는
                       반영되지 않아요.
                     </div>
