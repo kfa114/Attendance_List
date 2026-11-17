@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import type { AttendanceSnapshot } from "../domain/export";
+const ROWS_PER_PAGE = 25;
 let font: Promise<string> | undefined;
 async function koreanFont() {
   if (!font)
@@ -45,7 +46,7 @@ export function buildPdf(
   doc.setFontSize(16);
   const titleLines: string[] = doc.splitTextToSize(snapshot.title, tableWidth);
   const tableTop = 17 + (titleLines.length - 1) * 7 + 12;
-  const rowHeight = Math.min(8, (bottom - tableTop - 8) / 30);
+  const rowHeight = Math.min(10, (bottom - tableTop - 8) / ROWS_PER_PAGE);
   let y = 0,
     pageRows = 0;
   function header() {
@@ -57,8 +58,8 @@ export function buildPdf(
       renderingMode: "fillThenStroke",
     });
     doc.setFontSize(9);
-    doc.text(`교육일: ${snapshot.date}`, 105, tableTop - 4, {
-      align: "center",
+    doc.text(`교육일: ${snapshot.date}`, left + tableWidth, tableTop - 4, {
+      align: "right",
     });
     y = tableTop;
     let x = left;
@@ -128,7 +129,7 @@ export function buildPdf(
       names.length * 4.1 + 2,
       remarks.length * 3.2 + 1.2,
     );
-    if (pageRows >= 30 || y + height > bottom + 0.001) {
+    if (pageRows >= ROWS_PER_PAGE || y + height > bottom + 0.001) {
       doc.addPage();
       header();
     }

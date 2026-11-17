@@ -31,12 +31,13 @@ test("한글 글꼴이 포함된 실제 PDF 생성, 500명은 여러 페이지�
 });
 
 for (const singleMode of [true, false]) {
-  test(`${singleMode ? "기본" : "오전·오후"} 서명 30명은 A4 한 페이지, 31명은 두 페이지`, () => {
+  test(`${singleMode ? "기본" : "오전·오후"} 서명은 페이지당 최대 25명으로 분할`, () => {
     for (const [count, expectedPages] of [
-      [30, 1],
-      [31, 2],
-      [60, 2],
-      [61, 3],
+      [25, 1],
+      [26, 2],
+      [30, 2],
+      [50, 2],
+      [51, 3],
     ]) {
       const rows = Array.from({ length: count }, (_, i) => ({
         order: i + 1,
@@ -62,8 +63,8 @@ for (const singleMode of [true, false]) {
     }
   });
 }
-test("최대 길이 제목에서도 일반 명단 30명을 한 페이지에 배치", () => {
-  const rows = Array.from({ length: 30 }, (_, i) => ({
+test("최대 길이 제목에서도 일반 명단 25명을 한 페이지에 배치", () => {
+  const rows = Array.from({ length: 25 }, (_, i) => ({
     order: i + 1,
     name: "가상교육생",
     singleMode: true,

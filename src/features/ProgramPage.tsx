@@ -871,7 +871,7 @@ export function ProgramPage({
                     <div>
                       <h3>출석부 출력</h3>
                       <p className="small muted">
-                        교육일별 서명을 한 장의 출석부로 정리해요.
+                        교육일별 서명을 페이지당 최대 25명씩 정리해요.
                       </p>
                     </div>
                     <div className="inline">
